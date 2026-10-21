@@ -11,7 +11,7 @@ controller:
 redis:
   enabled: true
 applicationSet:
-  enabled: false
+  replicas: 0
 notifications:
   enabled: false
 dex:
@@ -20,6 +20,7 @@ configs:
   params:
     application.namespaces: argocd
   cm:
+    url: https://argocd.market-intel.internal
     timeout.reconciliation: 60s
   rbac:
     policy.default: role:readonly
