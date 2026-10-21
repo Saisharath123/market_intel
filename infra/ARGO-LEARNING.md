@@ -7,6 +7,7 @@ The frontend is Streamlit. React has not been implemented. The Python APIs and s
 1. Install AWS VPN Client from https://aws.amazon.com/vpn/client-vpn-download/ .
 2. In your authenticated Mumbai CloudShell, use **Actions → Download file** for `/home/cloudshell-user/.market-intel-private/market-intel-private.ovpn`. This contains your client private key: keep it private, do not upload it to GitHub, chat or a shared drive. Import it into AWS VPN Client as a new profile and connect.
 3. Download `/home/cloudshell-user/.market-intel-private/https-ca.crt`. Inspect its SHA256 fingerprint in CloudShell with `openssl x509 -in ~/.market-intel-private/https-ca.crt -noout -fingerprint -sha256` and compare the certificate before trusting it on your own device. Import this project HTTPS CA into your Windows current-user Trusted Root Certification Authorities using Certificate Manager. This is a trust decision for your device; perform it yourself. Never bypass a browser certificate warning.
+   The initial HTTPS CA SHA256 fingerprint is `90:33:64:98:EC:99:8F:7A:C9:5B:E5:C2:82:73:6F:0B:F8:0C:EA:04:45:54:DD:FA:DC:1F:26:DE:07:71:8E:ED`.
 4. Open these private addresses after connecting:
    - https://dashboard.market-intel.internal
    - https://argocd.market-intel.internal
@@ -59,5 +60,17 @@ kubectl -n monitoring get secret monitoring-grafana -o jsonpath='{.data.admin-pa
 Use username `admin`, rotate its password, then create viewer accounts for readers. Explore **Kubernetes / Compute Resources / Namespace (Pods)**, **Kubernetes / Compute Resources / Node (Pods)** and deployment dashboards, selecting namespace `market-intel`. Prometheus also exposes API request counts, status codes and latency histograms under `market_intel_http_*`.
 
 Prometheus and Alertmanager remain private; no direct public ingress. Alert rules are installed, but no email/Slack/webhook notification receiver is configured yet. An approved destination is required before adding outbound notifications.
+
+## Where to find logs
+
+Application logs: Argo CD → Applications → market-intel → select a Pod → Logs. From authenticated CloudShell:
+
+```bash
+kubectl -n market-intel logs deployment/market-api --all-pods=true --since=30m --timestamps
+kubectl -n market-intel logs deployment/news-api --all-pods=true --since=30m --timestamps
+kubectl -n market-intel logs deployment/dashboard --all-pods=true --since=30m --timestamps
+```
+
+These are container logs subject to node rotation and pod lifetime; they are not a durable archive. AWS CloudWatch Logs contains EKS control-plane logs in `/aws/eks/market-intel-prod/cluster` and VPN connection logs in `/market-intel/client-vpn`. Application logs are not shipped to CloudWatch or Grafana yet. Add Grafana Alloy + Loki, or an approved CloudWatch agent pipeline, for central retained application logs.
 
 The initial monitoring stack persists metrics on encrypted gp3 storage but uses one Prometheus/Grafana/Alertmanager replica each. It can have downtime during a node/zone failure; HA and backups remain necessary before relying on it for business-critical operations.
