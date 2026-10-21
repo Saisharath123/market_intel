@@ -6,7 +6,7 @@
     "Action": "sts:AssumeRoleWithWebIdentity",
     "Condition": {"StringEquals": {
       "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-      "token.actions.githubusercontent.com:sub": "repo:Saisharath123/market_intel:ref:refs/heads/main"
+      "token.actions.githubusercontent.com:sub": "repo:Saisharath123@168315578/market_intel@1427747568:ref:refs/heads/main"
     }}
   }]
 }

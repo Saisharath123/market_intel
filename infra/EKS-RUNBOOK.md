@@ -29,7 +29,7 @@ EKS, nodes, EBS, NAT, logs and ALB are billable resources. Creating IAM/OIDC rol
 ## Bootstrap image publishing
 
 1. Create the three private ECR repositories with immutable tags and scan-on-push; review scan results. Immutability means rerunning a release for the same SHA may require reusing the existing images rather than overwriting them.
-2. Create/reuse GitHub's OIDC provider (audience `sts.amazonaws.com`). Create `market-intel-image-publisher` using `infra/github-image-trust.json`, attaching only `infra/github-image-permissions.json`. Review these account-specific policies before applying.
+2. Create/reuse GitHub's OIDC provider (audience `sts.amazonaws.com`). Create `market-intel-image-publisher` using `infra/github-image-trust.json`, attaching only `infra/github-image-permissions.json`. The observed repository subject includes immutable IDs: `repo:Saisharath123@168315578/market_intel@1427747568:ref:refs/heads/main`. Match the actual issuer claims exactly; do not widen trust with wildcards when a name-only subject fails. Review these account-specific policies before applying.
 3. Set GitHub Actions repository variables: `AWS_REGION=ap-south-1`, `EKS_IMAGE_ROLE_ARN=<role ARN>`, `EKS_RELEASE_ENABLED=true`.
 4. Ensure repository policy allows GitHub Actions to create pull requests. The release job creates a branch containing only image-digest updates. If bot-created PRs are not allowed, preserve the branch and open its PR manually. Never auto-merge as a workaround.
 5. Run **Build EKS release images** on main. It tests the code, builds and pushes three images and proposes `deploy/chart/values-production.yaml`. Review the release PR and merge it. Until valid images are provided, Helm deliberately refuses to render deployment manifests.
