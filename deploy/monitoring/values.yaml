@@ -1,0 +1,74 @@
+# kube-prometheus-stack 92.11.0. Private interfaces; credentials generated in-cluster.
+grafana:
+  service:
+    type: ClusterIP
+  persistence:
+    enabled: true
+    storageClassName: market-intel-gp3
+    size: 5Gi
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: '1', memory: 512Mi}
+  grafana.ini:
+    auth.anonymous:
+      enabled: false
+    users:
+      allow_sign_up: false
+    security:
+      cookie_secure: true
+      cookie_samesite: lax
+    server:
+      root_url: https://grafana.market-intel.internal
+  sidecar:
+    dashboards:
+      searchNamespace: monitoring
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    retentionSize: 15GB
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    serviceMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [market-intel, monitoring, kube-system]
+    resources:
+      requests: {cpu: 200m, memory: 512Mi}
+      limits: {cpu: '1', memory: 1536Mi}
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: market-intel-gp3
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests: {storage: 20Gi}
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {cpu: 200m, memory: 256Mi}
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: market-intel-gp3
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests: {storage: 2Gi}
+# EKS managed control-plane endpoints are not exposed for these scrapers.
+kubeControllerManager: {enabled: false}
+kubeScheduler: {enabled: false}
+kubeEtcd: {enabled: false}
+kubeProxy: {enabled: false}
+defaultRules:
+  rules:
+    etcd: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeControllerManager: false
+prometheusOperator:
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 384Mi}

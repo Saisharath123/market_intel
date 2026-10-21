@@ -64,6 +64,7 @@ jobs:
             fi
             digest=$(aws ecr describe-images --repository-name "market-intel/$service" --image-ids "imageTag=$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text)
             [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+            python infra/check-image-scan.py "market-intel/$service" "$digest"
             key="$service"
             if [ "$service" != dashboard ]; then key="$service-api"; fi
             printf '  %s:\n    image: "%s@%s"\n' "$key" "$image" "$digest" >> work/release-values.yaml

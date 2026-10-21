@@ -5,3 +5,8 @@ __pycache__/
 .env
 .streamlit/secrets.toml
 *.egg-info/
+*.key
+*.ovpn
+*.p12
+*.pfx
+.market-intel-private/

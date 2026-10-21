@@ -1,0 +1,40 @@
+{{- if .Values.monitoring.enabled }}
+{{- range $name := list "market-api" "news-api" }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $name }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+{{- end }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: market-intel
+spec:
+  groups:
+    - name: market-intel
+      rules:
+        - alert: MarketIntelServiceDown
+          expr: up{namespace="market-intel"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: A Market Intel API scrape target is down
+        - alert: MarketIntelHighErrorRate
+          expr: sum by (service) (rate(market_intel_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum by (service) (rate(market_intel_http_requests_total[5m])), 0.001) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Market Intel API error rate exceeds five percent
+{{- end }}

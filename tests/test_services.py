@@ -48,3 +48,13 @@ def test_remote_service_response(monkeypatch):
 
     monkeypatch.setattr(client.requests, 'get', lambda *args, **kwargs: Response())
     assert client.fetch('http://market-api:8000', '/api/v1/quotes', None) == payload
+
+
+def test_metrics_do_not_label_arbitrary_paths_or_queries():
+    api = TestClient(market_app)
+    api.get('/unknown-sensitive-value?token=private-value')
+    metrics = api.get('/metrics')
+    assert metrics.status_code == 200
+    assert 'route="unmatched",service="market",status="404"' in metrics.text
+    assert 'unknown-sensitive-value' not in metrics.text
+    assert 'private-value' not in metrics.text

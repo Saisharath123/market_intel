@@ -28,3 +28,5 @@ ingress:
   enabled: false
   certificateArn: ''
   host: ''
+monitoring:
+  enabled: false
