@@ -73,7 +73,7 @@ flowchart LR
 
 `.github/workflows/ci.yml` runs on pushes, pull requests and manual dispatch. Tests use demo data without network or credentials. `.github/workflows/release.yml` is manually triggered on `main`, repeats tests and publishes an immutable commit-tagged image to GitHub Container Registry using `GITHUB_TOKEN`. A branch named differently requires adjusting that guard. Repository/organization package policy may require enabling package publishing.
 
-These workflows are prepared locally; they are **not active until pushed to a GitHub repository**. Container publication is delivery, not deployment. No cloud host or public URL has been configured. GitHub Actions does not run the dashboard or poll live prices. Scheduled Actions are not used because their execution can be delayed.
+The workflows are included in [Saisharath123/market_intel](https://github.com/Saisharath123/market_intel). Pushes trigger the test-and-build workflow; view execution status in the repository's Actions tab. Container publication is delivery, not deployment. No cloud host or public URL has been configured. GitHub Actions does not run the dashboard or poll live prices. Scheduled Actions are not used because their execution can be delayed.
 
 To run a built image: `docker run --env-file .env -p 8501:8501 india-market-pulse`. For API hosting, override the image command with `uvicorn market.api:app --host 0.0.0.0 --port 8000` and map port 8000 instead. Keep secrets in runtime configuration, never in the image build.
 
@@ -92,4 +92,4 @@ Provider and framework documentation:
 - https://docs.streamlit.io/develop/api-reference/execution-flow/st.fragment
 - https://docs.github.com/en/actions/how-tos/troubleshoot-workflows
 
-Next decisions: GitHub repository access, licensed live-data provider, fundamentals provider, hosting destination, and whether public data redistribution is allowed by the selected subscriptions.
+Next decisions: licensed live-data provider, fundamentals provider, hosting destination, and whether public data redistribution is allowed by the selected subscriptions.
