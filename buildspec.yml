@@ -1,0 +1,16 @@
+# Optional AWS CI. Tests only: no always-on server or image registry.
+version: 0.2
+env:
+  variables:
+    MARKET_MODE: demo
+    NEWS_MODE: demo
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+    commands:
+      - python -m pip install -r requirements-dev.txt
+  build:
+    commands:
+      - python -m ruff check .
+      - python -m pytest -q

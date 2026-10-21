@@ -76,6 +76,8 @@ flowchart LR
 
 ## CI and delivery
 
+For a low-cost AWS learning exercise, optional [CodeBuild checks](.github/workflows/aws-ci.yml) are prepared with [buildspec.yml](buildspec.yml). They are manual-only and disabled unless the `AWS_CI_ENABLED` repository variable is `true`. The [AWS setup guide](infra/aws-ci-setup.txt) describes the project, restricted IAM/OIDC permissions, account variables, cost calculation, and cleanup. No AWS resources have been provisioned. The dashboard stays on Streamlit, so this option adds no always-on AWS hosting cost. These AWS checks are independent of Streamlit's deployment trigger.
+
 ```mermaid
 flowchart LR
     P[Push or pull request] --> T[Ruff + pytest\nAPI and UI smoke tests]

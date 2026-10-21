@@ -1,0 +1,38 @@
+name: Optional AWS checks
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  check:
+    if: vars.AWS_CI_ENABLED == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: aws-ci-main
+      cancel-in-progress: false
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Start checks for this exact commit and wait for the result
+        env:
+          BUILD_PROJECT: ${{ vars.AWS_CODEBUILD_PROJECT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_id=$(aws codebuild start-build --project-name "$BUILD_PROJECT" --source-version "$GITHUB_SHA" --query 'build.id' --output text)
+          echo "AWS build: $build_id"
+          for attempt in $(seq 1 80); do
+            status=$(aws codebuild batch-get-builds --ids "$build_id" --query 'builds[0].buildStatus' --output text)
+            case "$status" in
+              SUCCEEDED) echo 'AWS checks passed'; exit 0 ;;
+              FAILED|FAULT|STOPPED|TIMED_OUT) echo "AWS checks ended: $status"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          aws codebuild stop-build --id "$build_id" >/dev/null
+          echo 'AWS checks exceeded the waiting limit'
+          exit 1

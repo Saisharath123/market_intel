@@ -1,0 +1,73 @@
+LOW-COST AWS LEARNING SETUP — PREPARED, NOT PROVISIONED
+
+Keep production hosting on Streamlit Community Cloud. Use AWS CodeBuild
+on demand to learn AWS IAM, build logs, and CI without an always-on server.
+The existing GitHub CI remains active; this optional exercise duplicates
+its code checks and tests. Streamlit CD remains independent of both.
+
+No AWS resources have been created and no AWS checks will start by default.
+The new GitHub workflow is manual-only and also requires AWS_CI_ENABLED=true.
+No API keys, GitHub PATs, paid data feeds, ECR, NAT gateways, load balancers,
+or EC2 instances are needed for this option.
+
+PROVISION AFTER ACCOUNT/REGION AND ESTIMATED COST ARE REVIEWED
+
+1. CodeBuild project:
+   - Name: market-intel-checks
+   - Source: public GitHub repository
+     https://github.com/Saisharath123/market_intel.git
+   - Source version: main (the workflow overrides this with its commit SHA)
+   - Buildspec: buildspec.yml
+   - Managed Ubuntu image: aws/codebuild/standard:7.0
+   - Compute: Linux EC2 on-demand, BUILD_GENERAL1_SMALL
+   - Privileged Docker mode: OFF
+   - Artifacts: none. Cache: none. Webhooks: none.
+   - Build timeout: 10 minutes; queued timeout: 5 minutes.
+   - Concurrent builds: 1.
+   - CloudWatch logs: enabled, retention 7 days.
+   - Service role: only the permissions needed to write its build logs.
+     There is no need for production data, deployment or secret access.
+
+2. GitHub-to-AWS authentication:
+   - Reuse an existing GitHub OIDC provider if present. Do not create a duplicate.
+   - Provider URL: https://token.actions.githubusercontent.com
+   - Audience: sts.amazonaws.com
+   - IAM role trust must match BOTH:
+       token.actions.githubusercontent.com:aud = sts.amazonaws.com
+       token.actions.githubusercontent.com:sub = repo:Saisharath123/market_intel:ref:refs/heads/main
+   - Allow sts:AssumeRoleWithWebIdentity from that provider.
+   - Allow codebuild:StartBuild, BatchGetBuilds and StopBuild only for
+     this project's ARN. Do not grant administrator access.
+   - Creating these roles grants persistent access and must be reviewed
+     before creation. No long-lived AWS keys are stored in GitHub.
+
+3. GitHub repository Actions variables (not secrets):
+   AWS_REGION = selected region
+   AWS_CI_ROLE_ARN = the GitHub OIDC role ARN
+   AWS_CODEBUILD_PROJECT = market-intel-checks
+   AWS_CI_ENABLED = true (only after provisioning and review)
+
+4. Actions > Optional AWS checks > Run workflow on main.
+   GitHub starts CodeBuild for that exact commit and waits for pass/fail.
+   CodeBuild installs dependencies, runs Ruff and pytest, then stops.
+   CodeBuild has its own 10-minute limit even if GitHub is cancelled.
+
+COST AND CLEANUP
+
+Cost = build minutes x the selected region/compute rate + small log storage.
+Do not assume Free Tier or promotional credits apply; inspect this account.
+Example only: at $0.005/minute, twenty five-minute builds cost $0.50 before
+credits, log charges and tax. This is not a confirmed regional quote.
+See https://aws.amazon.com/codebuild/pricing/ for the selected configuration.
+A budget alert is a notification, not a hard spending cap.
+
+Leave AWS_CI_ENABLED unset/false to stop future workflow runs. Stop any active
+build separately. To remove the exercise, delete the CodeBuild project, its
+dedicated log group and dedicated IAM roles; preserve shared OIDC providers.
+
+NEXT LEARNING STEP
+
+After one successful manual build, choose whether to automate it on main.
+Moving hosting to AWS is optional and separately priced. If AWS hosting is
+required, inspect existing servers first; a small Lightsail instance is a
+simple predictable-cost alternative, subject to available memory and region.
