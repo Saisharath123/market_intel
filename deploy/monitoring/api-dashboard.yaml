@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: market-intel-api-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: '1'
+data:
+  market-intel.json: |
+    {
+      "uid": "market-intel-apis", "title": "Market Intel APIs", "schemaVersion": 39,
+      "version": 1, "refresh": "30s", "time": {"from": "now-1h", "to": "now"},
+      "panels": [
+        {"id": 1, "type": "timeseries", "title": "Requests per second",
+         "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets": [{"expr": "sum by (service) (rate(market_intel_http_requests_total[5m]))", "legendFormat": "{{service}}"}]},
+        {"id": 2, "type": "timeseries", "title": "Server errors per second",
+         "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets": [{"expr": "sum by (service) (rate(market_intel_http_requests_total{status=~\"5..\"}[5m]))", "legendFormat": "{{service}}"}]},
+        {"id": 3, "type": "timeseries", "title": "p95 API latency (seconds)",
+         "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets": [{"expr": "histogram_quantile(0.95, sum by (le,service) (rate(market_intel_http_request_seconds_bucket[5m])))", "legendFormat": "{{service}}"}]},
+        {"id": 4, "type": "timeseries", "title": "Available service replicas",
+         "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+         "datasource": {"type": "prometheus", "uid": "prometheus"},
+         "targets": [{"expr": "kube_deployment_status_replicas_available{namespace=\"market-intel\"}", "legendFormat": "{{deployment}}"}]}
+      ]
+    }

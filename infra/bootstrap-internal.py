@@ -203,6 +203,7 @@ def monitoring():
     run(['helm', 'upgrade', '--install', 'monitoring', 'prometheus-community/kube-prometheus-stack',
          '--version', '92.11.0', '-n', 'monitoring', '--create-namespace',
          '-f', str(ROOT / 'deploy/monitoring/values.yaml'), '--wait', '--timeout', '15m'])
+    run(['kubectl', 'apply', '-f', str(ROOT / 'deploy/monitoring/api-dashboard.yaml')])
     print('Monitoring installed; verify PVCs, targets and dashboards')
 
 
