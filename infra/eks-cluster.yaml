@@ -30,10 +30,17 @@ managedNodeGroups:
     volumeSize: 30
     volumeType: gp3
     disableIMDSv1: true
+    disablePodIMDS: true
     ssh:
       allow: false
     labels:
       workload: market-intel
+addons:
+  - name: vpc-cni
+    attachPolicyARNs:
+      - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+  - name: coredns
+  - name: kube-proxy
 cloudWatch:
   clusterLogging:
     enableTypes: [api, audit, authenticator, controllerManager, scheduler]
