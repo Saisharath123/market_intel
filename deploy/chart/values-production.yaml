@@ -1,0 +1,9 @@
+# The image release workflow proposes actual ECR image digests here.
+# This is intentionally not deployable until the first release is approved.
+services:
+  dashboard:
+    image: ''
+  market-api:
+    image: ''
+  news-api:
+    image: ''

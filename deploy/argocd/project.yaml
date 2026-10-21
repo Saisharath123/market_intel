@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: market-intel
+  namespace: argocd
+spec:
+  sourceRepos:
+    - https://github.com/Saisharath123/market_intel.git
+  destinations:
+    - namespace: market-intel
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: apps
+      kind: Deployment
+    - group: ''
+      kind: Service
+    - group: policy
+      kind: PodDisruptionBudget
+    - group: networking.k8s.io
+      kind: Ingress

@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: market-intel
+  namespace: argocd
+spec:
+  project: market-intel
+  source:
+    repoURL: https://github.com/Saisharath123/market_intel.git
+    targetRevision: main
+    path: deploy/chart
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-production.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: market-intel
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - PruneLast=true

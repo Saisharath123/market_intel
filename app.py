@@ -1,6 +1,7 @@
 import pandas as pd
 import streamlit as st
-from market.service import insights, news, quotes
+from market.client import news, quotes
+from market.service import insights
 
 st.set_page_config(page_title='India Market Pulse', page_icon='📈', layout='wide')
 st.title('India Market Pulse')
@@ -32,7 +33,7 @@ def dashboard():
             cols[i % 3].metric(item['symbol'].split(':')[1], f"₹{item['price']:,.2f}",
                                f'{delta:+.2f}%' if delta is not None else None,
                                help=f"Quote time: {item.get('quote_time') or 'unavailable'} · Change vs previous trading-session close")
-        if snapshot['missing_symbols']:
+        if snapshot.get('missing_symbols'):
             st.warning('Missing quotes: ' + ', '.join(snapshot['missing_symbols']))
         st.subheader('Watchlist insights')
         summary = insights(snapshot)

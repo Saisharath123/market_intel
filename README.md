@@ -63,6 +63,25 @@ Data endpoints return HTTP 200 with an explicit `status` (`ok`, `partial`, `unav
 
 ## Architecture
 
+### EKS microservices migration
+
+The EKS path splits the app into independently built dashboard, market API and news API containers. Run all three locally with `docker compose up --build`; EKS uses internal HTTP services, while the existing Streamlit-hosted site keeps standalone mode. Kubernetes resources, an Argo CD project/application, an ECR image-release workflow and a two-node eksctl cluster configuration are prepared. These files do not provision AWS automatically. See [the EKS runbook](infra/EKS-RUNBOOK.md) for exact status, permissions, bootstrap, release, rollback and remaining production requirements.
+
+```mermaid
+flowchart LR
+    U[Browser] --> D[Dashboard service]
+    D --> M[Market API]
+    D --> N[News API]
+    M --> Y[Yahoo Finance]
+    N --> R[CNBC TV18 RSS]
+    CI[GitHub Actions] --> E[ECR image digests]
+    CI --> P[Reviewed image-release PR]
+    P --> G[Main: deployment configuration]
+    G --> A[Argo CD]
+    A --> K[EKS: two managed workers]
+    K --> D
+```
+
 ```mermaid
 flowchart LR
     Y[Yahoo Finance via yfinance\nfree delayed quotes] --> S[Shared Python service\nnormalization + TTL cache]

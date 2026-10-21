@@ -1,0 +1,40 @@
+# Resolve the administrator CIDR before running. This file is not auto-applied.
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: market-intel-prod
+  region: eu-north-1
+  version: '1.36'
+availabilityZones: [eu-north-1a, eu-north-1b]
+vpc:
+  cidr: 10.80.0.0/16
+  nat:
+    gateway: HighlyAvailable
+  clusterEndpoints:
+    publicAccess: true
+    privateAccess: true
+  publicAccessCIDRs:
+    - 203.0.113.10/32 # Documentation address: replace with approved admin egress CIDR.
+iam:
+  withOIDC: true
+accessConfig:
+  authenticationMode: API_AND_CONFIG_MAP
+managedNodeGroups:
+  - name: applications
+    instanceType: t3.medium
+    amiFamily: AmazonLinux2023
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 4
+    privateNetworking: true
+    volumeSize: 30
+    volumeType: gp3
+    disableIMDSv1: true
+    ssh:
+      allow: false
+    labels:
+      workload: market-intel
+cloudWatch:
+  clusterLogging:
+    enableTypes: [api, audit, authenticator, controllerManager, scheduler]
+    logRetentionInDays: 7

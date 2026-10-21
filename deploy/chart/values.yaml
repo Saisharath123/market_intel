@@ -1,0 +1,30 @@
+services:
+  dashboard:
+    port: 8501
+    replicas: 2
+    image: ''
+    healthPath: /_stcore/health
+    memory: 512Mi
+    env:
+      MARKET_API_URL: http://market-api:8000
+      NEWS_API_URL: http://news-api:8000
+  market-api:
+    port: 8000
+    replicas: 2
+    image: ''
+    healthPath: /health
+    memory: 768Mi
+    env:
+      MARKET_MODE: yahoo
+  news-api:
+    port: 8000
+    replicas: 2
+    image: ''
+    healthPath: /health
+    memory: 256Mi
+    env:
+      NEWS_MODE: cnbctv18
+ingress:
+  enabled: false
+  certificateArn: ''
+  host: ''

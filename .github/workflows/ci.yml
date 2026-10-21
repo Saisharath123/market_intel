@@ -8,7 +8,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       MARKET_MODE: demo
       NEWS_MODE: demo
@@ -22,3 +22,24 @@ jobs:
       - run: ruff check .
       - run: pytest -q
       - run: docker build -t india-market-pulse:test .
+      - name: Verify each microservice image
+        run: |
+          for service in dashboard market news; do
+            docker build -f services/$service/Dockerfile -t market-intel-$service:test .
+          done
+      - name: Start and smoke-test microservices
+        run: |
+          docker compose up --build --wait --wait-timeout 120
+          curl --fail http://127.0.0.1:8000/api/v1/quotes
+          curl --fail http://127.0.0.1:8001/api/v1/news
+          curl --fail http://127.0.0.1:8501/_stcore/health
+      - name: Stop smoke-test services
+        if: always()
+        run: docker compose down
+      - uses: azure/setup-helm@v4.3.0
+        with:
+          version: v3.19.0
+      - name: Validate Kubernetes chart
+        run: |
+          helm lint deploy/chart --set services.dashboard.image=example/dashboard:ci --set services.market-api.image=example/market:ci --set services.news-api.image=example/news:ci
+          helm template market-intel deploy/chart --kube-version 1.36.0 --set services.dashboard.image=example/dashboard:ci --set services.market-api.image=example/market:ci --set services.news-api.image=example/news:ci > /tmp/market-intel-rendered.yaml

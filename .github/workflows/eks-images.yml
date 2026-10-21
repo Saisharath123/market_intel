@@ -1,0 +1,87 @@
+name: Build EKS release images
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app.py'
+      - 'market/**'
+      - 'services/**'
+      - '.github/workflows/eks-images.yml'
+permissions:
+  contents: read
+jobs:
+  release:
+    if: vars.EKS_RELEASE_ENABLED == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    concurrency:
+      group: eks-images-main
+      cancel-in-progress: false
+    env:
+      MARKET_MODE: demo
+      NEWS_MODE: demo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: pytest -q
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.EKS_IMAGE_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+      - name: Build and publish each service
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work
+          printf 'services:\n' > work/release-values.yaml
+          for service in dashboard market news; do
+            image="$REGISTRY/market-intel/$service"
+            existing=$(aws ecr batch-get-image --repository-name "market-intel/$service" --image-ids "imageTag=$GITHUB_SHA" --query 'images[0].imageId.imageDigest' --output text)
+            if [ "$existing" = None ]; then
+              docker build -f "services/$service/Dockerfile" -t "$image:$GITHUB_SHA" .
+              docker push "$image:$GITHUB_SHA"
+            fi
+            digest=$(aws ecr describe-images --repository-name "market-intel/$service" --image-ids "imageTag=$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text)
+            [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+            key="$service"
+            if [ "$service" != dashboard ]; then key="$service-api"; fi
+            printf '  %s:\n    image: "%s@%s"\n' "$key" "$image" "$digest" >> work/release-values.yaml
+          done
+      - name: Propose reviewed GitOps release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="release/images-$GITHUB_RUN_ID"
+          git switch -c "$branch"
+          # Patch image digests only; preserve approved ingress configuration.
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+          target = Path('deploy/chart/values-production.yaml')
+          existing = yaml.safe_load(target.read_text()) or {}
+          release = yaml.safe_load(Path('work/release-values.yaml').read_text())
+          services = existing.setdefault('services', {})
+          for name, config in release['services'].items():
+              services.setdefault(name, {})['image'] = config['image']
+          target.write_text(yaml.safe_dump(existing, sort_keys=False))
+          PY
+          git add deploy/chart/values-production.yaml
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "Release service images from $GITHUB_SHA"
+          git push origin "$branch"
+          printf 'Deploy the three tested service images built from commit %s. Review image digests and merge to let Argo CD reconcile the release. Revert this change to roll back.\n' "$GITHUB_SHA" > work/release-body.txt
+          gh pr create --base main --head "$branch" --title 'Release market-intel service images' --body-file work/release-body.txt

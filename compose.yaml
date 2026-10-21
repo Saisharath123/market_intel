@@ -1,0 +1,47 @@
+services:
+  market-api:
+    build:
+      context: .
+      dockerfile: services/market/Dockerfile
+    environment:
+      MARKET_MODE: ${MARKET_MODE:-yahoo}
+    ports:
+      - '127.0.0.1:8000:8000'
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=4)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  news-api:
+    build:
+      context: .
+      dockerfile: services/news/Dockerfile
+    environment:
+      NEWS_MODE: ${NEWS_MODE:-cnbctv18}
+    ports:
+      - '127.0.0.1:8001:8000'
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=4)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  dashboard:
+    build:
+      context: .
+      dockerfile: services/dashboard/Dockerfile
+    environment:
+      MARKET_API_URL: http://market-api:8000
+      NEWS_API_URL: http://news-api:8000
+    ports:
+      - '127.0.0.1:8501:8501'
+    depends_on:
+      - market-api
+      - news-api
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=4)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
