@@ -20,6 +20,8 @@ Open http://localhost:8502 on the same machine running port-forward. Use a local
 
 Feed verification from the deployed dashboard: CNBC TV18 returned `ok`; Yahoo returned five of six current-session quotes around 10:02 IST, with TCS explicitly listed as missing. The dashboard health endpoint returned `ok`. A healthy deployment does not guarantee upstream data completeness or real-time exchange prices.
 
+Initial ECR basic scans completed for all three images, each reporting 3 HIGH, 9 MEDIUM and 3 LOW OS-package findings. These findings have not been waived or remediated; assess fixed package availability and rebuild/release patched images before public production use. Basic scanning does not cover every Python dependency, and the release workflow currently does not enforce a vulnerability threshold.
+
 For Argo CD, run `kubectl -n argocd port-forward service/argocd-server 8443:443` locally. Its initial administrator password is in Kubernetes secret `argocd-initial-admin-secret`; retrieve it privately in your own terminal and complete password rotation before sharing access. Do not export this secret into GitHub or application containers. Add organizational SSO before wider use.
 
 For each code change, open a PR and inspect **Test and build**. After merge, **Build EKS release images** publishes immutable ECR images and creates a `release/images-<run-id>` branch. Current repository policy blocks bot-created PRs, so open that branch's PR using the workflow's comparison link, review and merge it. Argo CD then deploys automatically. Verify all deployments show 2/2 and the application shows Synced/Healthy. For rollback, revert the previous digest release in Git and merge the revert.
