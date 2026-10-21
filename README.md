@@ -1,6 +1,6 @@
 # India Market Pulse
 
-Python / Streamlit MVP with a read-only FastAPI interface. Starts with **fixed synthetic quotes** and CNBC TV18 RSS news. Set `NEWS_MODE=demo` for a fully offline preview. Live adapters never fall back silently to demo values.
+Python / Streamlit MVP with a read-only FastAPI interface. Starts with **actual Indian market prices from Yahoo Finance** and CNBC TV18 RSS news. No API key or paid subscription is required. Prices may be delayed or from an older trading session. Set both `MARKET_MODE=demo` and `NEWS_MODE=demo` for a fully offline preview. Live adapters never fall back silently to demo values.
 
 ## Online dashboard and automatic deployment
 
@@ -10,7 +10,7 @@ Streamlit Community Cloud is connected to `Saisharath123/market_intel`, branch `
 
 GitHub Actions still runs lint, tests and the Docker build independently. Streamlit's automatic deployment does not wait for those checks; review changes on a branch and merge after CI passes. The manual GHCR container workflow remains an alternative delivery path and is not used by Community Cloud.
 
-The online deployment serves the Streamlit dashboard only; the optional FastAPI server is not deployed. Defaults are demo prices and CNBC TV18 RSS. Change future credentials in Community Cloud's app settings, not in the repository. Community Cloud may put inactive apps to sleep.
+The online deployment serves the Streamlit dashboard only; the optional FastAPI server is not deployed. Defaults are Yahoo Finance prices and CNBC TV18 RSS. Change future credentials in Community Cloud's app settings, not in the repository. Community Cloud may put inactive apps to sleep.
 
 ## Run on Windows
 
@@ -35,14 +35,17 @@ Interactive API docs: http://localhost:8000/docs. Streamlit calls the shared ser
 
 | Source | Configuration | Behavior |
 |---|---|---|
-| Demo | `MARKET_MODE=demo` (default), `NEWS_MODE=demo` | Six fixed synthetic quotes and one example headline; never current prices |
+| Yahoo Finance | `MARKET_MODE=yahoo` (default) | Keyless actual prices for six NSE symbols; five-minute cache; may be delayed |
+| Demo | `MARKET_MODE=demo`, `NEWS_MODE=demo` | Six fixed synthetic quotes and one example headline; never current prices |
 | CNBC TV18 RSS | `NEWS_MODE=cnbctv18` (default) | Market headlines, source links and publication times; five-minute cache |
 | Moneycontrol RSS | `NEWS_MODE=moneycontrol` | Headlines, source links and publication times; five-minute cache |
-| Zerodha Kite | `MARKET_MODE=kite`, `KITE_API_KEY`, `KITE_ACCESS_TOKEN` | Official quote endpoint; 30-second cache |
+| Zerodha Kite | `MARKET_MODE=kite`, `KITE_API_KEY`, `KITE_ACCESS_TOKEN` | Official quote endpoint; five-minute cache |
 
 Put secrets only in local `.env` or the deployment platform's environment settings. Restart after changes. Never commit `.env`. Kite requires a valid market-data entitlement and authenticated access token; token generation is outside this MVP. The token expires at 6 AM the next day according to the provider documentation. No credentials are required for demo mode or RSS.
 
-The UI checks for updates every 30 seconds while open. This is polling, not tick-by-tick streaming. Quote timestamps come from Kite when available; fetch timestamps are UTC and are not exchange timestamps. Older quotes remain possible after market close. News may be older than its fetch time. Missing quotes and upstream failures are shown explicitly. There is no durable history or stale-data fallback. Caches are per process, so the separate API and dashboard maintain independent caches.
+The UI checks for updates every 30 seconds while open; the shared quote cache refreshes at most once every five minutes per process. This is polling, not tick-by-tick streaming. Yahoo quote timestamps are displayed in Indian time, with quote age and session date in the details table. Quotes older than 36 hours trigger a warning, which may also occur over holidays/weekends; the warning does not infer an exchange trading calendar. Fetch timestamps are UTC and are not exchange timestamps. News may be older than its fetch time. Missing quotes and upstream failures are shown explicitly. There is no durable history or stale-data fallback. Caches are per process, so the separate API and dashboard maintain independent caches.
+
+Yahoo is accessed through the unofficial open-source [yfinance client](https://pypi.org/project/yfinance/). The client describes its data access as intended for personal research/educational use. Free access is not a public/commercial redistribution licence; review Yahoo's terms for the intended audience. No availability SLA or exact delay is guaranteed, and cloud IPs may be rate-limited. Failures leave quotes unavailable, never synthetic. Each symbol is fetched independently with a bounded timeout, with up to three requests in parallel. Prices and timestamps come from quote metadata; changes compare with the last unadjusted daily close before the quote's trading date, not the chart-range baseline. Verified locally on 21 October 2026: all six quotes returned, with latest source timestamps of 19 October 2026; the UI flags their age.
 
 CNBC TV18 feed: https://www.cnbctv18.com/commonfeeds/v1/cne/rss/market.xml. Verified on 21 October 2026: 200 RSS items with same-day publication timestamps; the app keeps the first 30 usable items. Moneycontrol feed: https://www.moneycontrol.com/rss/marketreports.xml; verification returned April 2024 headlines, so it is not the default. A feed whose newest headline is over 72 hours old is flagged `stale`; absent/unverifiable or future dates produce `unknown` freshness. Only RSS titles/links/timestamps are read; full articles and paywalls are not scraped. Feed reachability is environment-dependent and does not establish redistribution permission. Confirm source terms before public/commercial publishing. Screener, Tickertape, Trendlyne and other page scrapers are not implemented. Fundamental data is a separate future adapter.
 
@@ -62,9 +65,10 @@ Data endpoints return HTTP 200 with an explicit `status` (`ok`, `partial`, `unav
 
 ```mermaid
 flowchart LR
-    D[Fixed demo fixtures] --> S[Shared Python service\nnormalization + TTL cache]
+    Y[Yahoo Finance via yfinance\nfree delayed quotes] --> S[Shared Python service\nnormalization + TTL cache]
+    D[Optional demo fixtures] --> S
     M[CNBC TV18 or Moneycontrol RSS\n5 minute cache] --> S
-    K[Kite quote API\n30 second cache] --> S
+    K[Optional Kite quote API\n5 minute cache] --> S
     S --> U[Streamlit dashboard\nrefresh while open]
     S --> A[FastAPI\nread-only JSON + OpenAPI]
     A -. future .-> R[React client]
@@ -94,7 +98,7 @@ To run a built image: `docker run --env-file .env -p 8501:8501 india-market-puls
 .venv\Scripts\python -m pytest -q
 ```
 
-Tests cover price-change math, missing quotes, RSS deduplication and unsafe links, provider outage behavior, API responses and a Streamlit demo smoke test.
+Tests cover price-change math against the correct prior session, timestamp validation, missing/invalid Yahoo quotes, partial and total outages without synthetic fallback, RSS deduplication and unsafe links, API responses and a Streamlit demo smoke test. CI uses mocked or demo data and does not depend on Yahoo availability.
 
 Provider and framework documentation:
 - https://kite.trade/docs/connect/v3/market-quotes/

@@ -102,11 +102,22 @@ def news_freshness(items, now=None):
     return 'ok', None
 
 
-@cached(30)
+@cached(300)
 def quotes():
-    mode = os.getenv('MARKET_MODE', 'demo')
-    result = dict(mode=mode, source='Kite' if mode == 'kite' else 'Demo', fetched_at=utcnow(),
+    mode = os.getenv('MARKET_MODE', 'yahoo')
+    result = dict(mode=mode, source={'kite': 'Kite', 'yahoo': 'Yahoo Finance via yfinance', 'demo': 'Demo'}.get(mode, mode), fetched_at=utcnow(),
                   status='ok', error=None, items=[], missing_symbols=[])
+    if mode == 'yahoo':
+        from market.yahoo import fetch_quotes
+        result['items'] = fetch_quotes()
+        present = {row['symbol'] for row in result['items']}
+        result['missing_symbols'] = [s for s in WATCHLIST if s not in present]
+        if result['missing_symbols']:
+            result.update(status='partial' if present else 'unavailable',
+                          error='Some Yahoo quotes could not load. The free source may be rate-limited or unavailable; retry after five minutes.')
+        elif any(row['age_hours'] > 36 for row in result['items']):
+            result.update(status='stale', error='Some quotes are over 36 hours old. Check exchange timestamps; markets may be closed or the source delayed.')
+        return result
     if mode == 'demo':
         prices = [22450, 48100, 1420, 3650, 1700, 1550]
         closes = [22300, 48300, 1400, 3690, 1680, 1540]

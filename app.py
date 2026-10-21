@@ -6,7 +6,7 @@ st.set_page_config(page_title='India Market Pulse', page_icon='📈', layout='wi
 st.title('India Market Pulse')
 st.caption('Indian indices, a small stock watchlist, and market headlines')
 st.sidebar.header('MVP controls')
-st.sidebar.caption('Quotes: 30-second cache · News: 5-minute cache')
+st.sidebar.caption('Quotes and news: 5-minute cache')
 st.sidebar.caption('Source modes are configured on the server in .env. Restart after changing them.')
 refresh = st.sidebar.toggle('Refresh while this tab is open', value=True)
 st.sidebar.button('Refresh now')
@@ -18,6 +18,8 @@ def dashboard():
     snapshot = quotes()
     if snapshot['mode'] == 'demo':
         st.warning('DEMO QUOTES — fixed synthetic values, not current market prices.')
+    elif snapshot['mode'] == 'yahoo':
+        st.info('Actual market prices from Yahoo Finance · may be delayed · refreshes every five minutes · no API key required.')
     if snapshot['error']:
         st.error(snapshot['error'])
     st.caption(f"Quote source: {snapshot['source']} · Status: {snapshot['status']} · Fetched (UTC): {snapshot['fetched_at']}")
@@ -28,7 +30,10 @@ def dashboard():
         for i, item in enumerate(items):
             delta = item['change_pct']
             cols[i % 3].metric(item['symbol'].split(':')[1], f"₹{item['price']:,.2f}",
-                               f'{delta:+.2f}%' if delta is not None else None)
+                               f'{delta:+.2f}%' if delta is not None else None,
+                               help=f"Quote time: {item.get('quote_time') or 'unavailable'} · Change vs previous trading-session close")
+        if snapshot['missing_symbols']:
+            st.warning('Missing quotes: ' + ', '.join(snapshot['missing_symbols']))
         st.subheader('Watchlist insights')
         summary = insights(snapshot)
         st.write(f"{summary['advances']} advancing · {summary['declines']} declining · {summary['unchanged']} unchanged")
@@ -37,7 +42,7 @@ def dashboard():
         if not frame.empty:
             st.bar_chart(frame.set_index('symbol')['change_pct'], horizontal=True)
         with st.expander('Quote details and exchange timestamps'):
-            st.dataframe(pd.DataFrame(items), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(items), width='stretch', hide_index=True)
     else:
         st.info('No quotes available. Headlines can still load independently.')
     st.subheader('Market headlines')
