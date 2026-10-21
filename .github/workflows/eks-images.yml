@@ -84,4 +84,7 @@ jobs:
           git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "Release service images from $GITHUB_SHA"
           git push origin "$branch"
           printf 'Deploy the three tested service images built from commit %s. Review image digests and merge to let Argo CD reconcile the release. Revert this change to roll back.\n' "$GITHUB_SHA" > work/release-body.txt
-          gh pr create --base main --head "$branch" --title 'Release market-intel service images' --body-file work/release-body.txt
+          if ! gh pr create --base main --head "$branch" --title 'Release market-intel service images' --body-file work/release-body.txt; then
+            echo '::warning::Repository policy prevented bot PR creation. The release branch is preserved for a maintainer to open and review its PR.'
+            printf 'Open and review the release PR: https://github.com/%s/compare/main...%s?expand=1\n' "$GITHUB_REPOSITORY" "$branch" >> "$GITHUB_STEP_SUMMARY"
+          fi

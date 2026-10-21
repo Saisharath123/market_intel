@@ -1,0 +1,19 @@
+# Pinned chart: argo/argo-cd 10.10.5, application v3.5.5.
+# Keep administration internal; use an authenticated kubectl port-forward.
+server:
+  service:
+    type: ClusterIP
+  replicas: 1
+repoServer:
+  replicas: 1
+controller:
+  replicas: 1
+redis:
+  enabled: true
+configs:
+  params:
+    application.namespaces: argocd
+  cm:
+    timeout.reconciliation: 60s
+  rbac:
+    policy.default: role:readonly
