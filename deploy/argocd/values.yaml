@@ -10,6 +10,12 @@ controller:
   replicas: 1
 redis:
   enabled: true
+applicationSet:
+  enabled: false
+notifications:
+  enabled: false
+dex:
+  enabled: false
 configs:
   params:
     application.namespaces: argocd
