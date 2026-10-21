@@ -1,9 +1,7 @@
-# The image release workflow proposes actual ECR image digests here.
-# This is intentionally not deployable until the first release is approved.
 services:
   dashboard:
-    image: ''
+    image: 521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/dashboard@sha256:abee8e00c721a16ab85d5ae05e518afd4376b3183c59b7d88ce3b5d0349301e4
   market-api:
-    image: ''
+    image: 521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/market@sha256:231a530a49877fc6dd95232a3a5a8417ce2a89c694415b0325909351f1ae86b8
   news-api:
-    image: ''
+    image: 521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/news@sha256:4ca60300b57bd31205defbc90bc6b42652d14c7b4cdf62a3c6709e43c3868cb1
