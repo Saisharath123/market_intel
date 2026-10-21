@@ -2,6 +2,16 @@
 
 Python / Streamlit MVP with a read-only FastAPI interface. Starts with **fixed synthetic quotes** and CNBC TV18 RSS news. Set `NEWS_MODE=demo` for a fully offline preview. Live adapters never fall back silently to demo values.
 
+## Online dashboard and automatic deployment
+
+Dashboard: [India Market Pulse](https://market-intel-saisharath123.streamlit.app/).
+
+Streamlit Community Cloud is connected to `Saisharath123/market_intel`, branch `main`, entry file `app.py`, using Python 3.11. Commits pushed to `main` are automatically picked up by Streamlit. Python changes update the running app; dependency changes trigger dependency installation. No deploy token or manual GitHub Actions release is needed for this dashboard.
+
+GitHub Actions still runs lint, tests and the Docker build independently. Streamlit's automatic deployment does not wait for those checks; review changes on a branch and merge after CI passes. The manual GHCR container workflow remains an alternative delivery path and is not used by Community Cloud.
+
+The online deployment serves the Streamlit dashboard only; the optional FastAPI server is not deployed. Defaults are demo prices and CNBC TV18 RSS. Change future credentials in Community Cloud's app settings, not in the repository. Community Cloud may put inactive apps to sleep.
+
 ## Run on Windows
 
 Open this folder in VS Code, then run these commands in its terminal:
@@ -73,7 +83,7 @@ flowchart LR
 
 `.github/workflows/ci.yml` runs on pushes, pull requests and manual dispatch. Tests use demo data without network or credentials. `.github/workflows/release.yml` is manually triggered on `main`, repeats tests and publishes an immutable commit-tagged image to GitHub Container Registry using `GITHUB_TOKEN`. A branch named differently requires adjusting that guard. Repository/organization package policy may require enabling package publishing.
 
-The workflows are included in [Saisharath123/market_intel](https://github.com/Saisharath123/market_intel). Pushes trigger the test-and-build workflow; view execution status in the repository's Actions tab. Container publication is delivery, not deployment. No cloud host or public URL has been configured. GitHub Actions does not run the dashboard or poll live prices. Scheduled Actions are not used because their execution can be delayed.
+The workflows are included in [Saisharath123/market_intel](https://github.com/Saisharath123/market_intel). Pushes trigger the test-and-build workflow; view execution status in the repository's Actions tab. Container publication is delivery, not deployment. The dashboard is hosted separately on Streamlit Community Cloud as described above. GitHub Actions does not run the dashboard or poll live prices. Scheduled Actions are not used because their execution can be delayed.
 
 To run a built image: `docker run --env-file .env -p 8501:8501 india-market-pulse`. For API hosting, override the image command with `uvicorn market.api:app --host 0.0.0.0 --port 8000` and map port 8000 instead. Keep secrets in runtime configuration, never in the image build.
 
@@ -92,4 +102,4 @@ Provider and framework documentation:
 - https://docs.streamlit.io/develop/api-reference/execution-flow/st.fragment
 - https://docs.github.com/en/actions/how-tos/troubleshoot-workflows
 
-Next decisions: licensed live-data provider, fundamentals provider, hosting destination, and whether public data redistribution is allowed by the selected subscriptions.
+Next decisions: licensed live-data provider, fundamentals provider, and whether public data redistribution is allowed by the selected subscriptions.
