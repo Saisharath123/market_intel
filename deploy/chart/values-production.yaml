@@ -1,7 +1,7 @@
 services:
   dashboard:
-    image: 521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/dashboard@sha256:a309b669fb1c8baec046ec0e3dde81b5017947d6ce2ede39d75e9a2df8ae3277
+    image: 521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/dashboard@sha256:1ae772671025b21bd3649760d87ea3617da657c4967e71913e949f308440b42e
   market-api:
-    image: 521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/market@sha256:84b3b34d2da2f90af7941bcf90ba44eea099ea7a89933e2d912f621215a5aa22
+    image: 521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/market@sha256:b399326aacad1d3b1e8ffcd7d685f1a13f8650e72cc6c59a823dcd4da90c119a
   news-api:
-    image: 521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/news@sha256:1a50913d04dd2db64d9e1b9d27d61ccdfb78f851fa753c72f9f87b5e6fbc1128
+    image: 521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/news@sha256:9a88a1d92210f68cfc8b1313acced4820b09c926959dc7e09358c33f497543a0
