@@ -47,6 +47,8 @@ flowchart LR
 
 The approximate 730-hour baseline from the checked Mumbai rates is USD 150/month for the EKS control plane, two workers and one NAT gateway, before EBS, IPv4, logs, traffic and tax. No public load balancer was provisioned. This is an estimate, not a billing or free-tier guarantee.
 
+That original baseline excludes the subsequent internal-access setup. The authenticated AWS Pricing API returned Mumbai Client VPN rates of USD 0.15 per endpoint association-hour and USD 0.05 per active client connection-hour. Two continuously associated subnets add approximately USD 219 per 730-hour month, even while no client is connected. Internal ALB, its capacity units, private DNS, Secrets Manager, monitoring EBS and logs add further charges. Review actual billing separately; this AWS-only VPN configuration is not a free access layer.
+
 ## Intended resources
 
 - Account `521595303406`, region `ap-south-1`, cluster `market-intel-prod`.
