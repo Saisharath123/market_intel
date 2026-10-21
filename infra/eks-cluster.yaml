@@ -5,6 +5,8 @@ metadata:
   name: market-intel-prod
   region: ap-south-1
   version: '1.36'
+  tags:
+    Project: market-intel
 availabilityZones: [ap-south-1a, ap-south-1b]
 vpc:
   cidr: 10.80.0.0/16
