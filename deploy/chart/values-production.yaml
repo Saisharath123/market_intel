@@ -5,3 +5,5 @@ services:
     image: 521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/market@sha256:b399326aacad1d3b1e8ffcd7d685f1a13f8650e72cc6c59a823dcd4da90c119a
   news-api:
     image: 521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/news@sha256:9a88a1d92210f68cfc8b1313acced4820b09c926959dc7e09358c33f497543a0
+monitoring:
+  enabled: true
