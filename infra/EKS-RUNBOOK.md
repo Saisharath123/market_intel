@@ -4,16 +4,16 @@ Status: prepared configuration. A cluster is not created merely by committing th
 
 ## Intended resources
 
-- Account `521595303406`, region `eu-north-1`, cluster `market-intel-prod`.
+- Account `521595303406`, region `ap-south-1`, cluster `market-intel-prod`.
 - EKS Kubernetes 1.36 (standard support); validate availability and eksctl support before creation.
-- New VPC `10.80.0.0/16`, public and private subnets in two availability zones, per-zone NAT gateways.
-- Managed worker group: desired/minimum **2** `t3.medium` Amazon Linux 2023 instances, maximum 4. Two nodes are the desired capacity, not a guarantee of one per zone or of physical availability. No cluster autoscaler is installed initially.
+- New VPC `10.80.0.0/16`, public and private subnets in two availability zones, one shared NAT gateway to limit recurring cost. This introduces an outbound-connectivity dependency on one zone and possible cross-zone transfer charges; it is not a fully zone-resilient egress design.
+- Managed worker group: desired/minimum/maximum **2** `t3a.medium` Amazon Linux 2023 instances. Two nodes are the desired capacity, not a guarantee of one per zone or of physical availability. No cluster autoscaler is installed initially. Managed node updates may temporarily launch additional replacement capacity.
 - Private workers, SSH disabled, private API connectivity plus a CIDR-restricted public administrative endpoint.
 - ECR repositories: `market-intel/dashboard`, `market-intel/market`, `market-intel/news`.
 - Dedicated GitHub OIDC image-publishing role, restricted to this repository's `main` branch and these ECR repositories; no cluster permissions.
 - Argo CD installed inside EKS, UI initially accessed by port-forward, never exposed publicly by default.
 - Two replicas of each application service, spread across nodes, with probes, resource bounds, disruption budgets and non-root containers.
-- Optional public ALB ingress requires AWS Load Balancer Controller, its IAM role, a domain and an ACM certificate in eu-north-1. Without these, verify through port-forward.
+- Optional public ALB ingress requires AWS Load Balancer Controller, its IAM role, a domain and an ACM certificate in ap-south-1. Without these, verify through port-forward.
 
 EKS, nodes, EBS, NAT, logs and ALB are billable resources. Creating IAM/OIDC roles adds persistent access and requires a specific reviewed authorization at execution time under browser interaction rules.
 
@@ -30,7 +30,7 @@ EKS, nodes, EBS, NAT, logs and ALB are billable resources. Creating IAM/OIDC rol
 
 1. Create the three private ECR repositories with immutable tags and scan-on-push; review scan results. Immutability means rerunning a release for the same SHA may require reusing the existing images rather than overwriting them.
 2. Create/reuse GitHub's OIDC provider (audience `sts.amazonaws.com`). Create `market-intel-image-publisher` using `infra/github-image-trust.json`, attaching only `infra/github-image-permissions.json`. Review these account-specific policies before applying.
-3. Set GitHub Actions repository variables: `AWS_REGION=eu-north-1`, `EKS_IMAGE_ROLE_ARN=<role ARN>`, `EKS_RELEASE_ENABLED=true`.
+3. Set GitHub Actions repository variables: `AWS_REGION=ap-south-1`, `EKS_IMAGE_ROLE_ARN=<role ARN>`, `EKS_RELEASE_ENABLED=true`.
 4. Ensure repository policy allows GitHub Actions to create pull requests. The release job creates a branch containing only image-digest updates. If bot-created PRs are not allowed, preserve the branch and open its PR manually. Never auto-merge as a workaround.
 5. Run **Build EKS release images** on main. It tests the code, builds and pushes three images and proposes `deploy/chart/values-production.yaml`. Review the release PR and merge it. Until valid images are provided, Helm deliberately refuses to render deployment manifests.
 

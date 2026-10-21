@@ -6,9 +6,9 @@
       "ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart",
       "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:DescribeImages", "ecr:BatchGetImage"
     ], "Resource": [
-      "arn:aws:ecr:eu-north-1:521595303406:repository/market-intel/dashboard",
-      "arn:aws:ecr:eu-north-1:521595303406:repository/market-intel/market",
-      "arn:aws:ecr:eu-north-1:521595303406:repository/market-intel/news"
+      "arn:aws:ecr:ap-south-1:521595303406:repository/market-intel/dashboard",
+      "arn:aws:ecr:ap-south-1:521595303406:repository/market-intel/market",
+      "arn:aws:ecr:ap-south-1:521595303406:repository/market-intel/news"
     ]}
   ]
 }

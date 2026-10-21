@@ -3,13 +3,13 @@ apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 metadata:
   name: market-intel-prod
-  region: eu-north-1
+  region: ap-south-1
   version: '1.36'
-availabilityZones: [eu-north-1a, eu-north-1b]
+availabilityZones: [ap-south-1a, ap-south-1b]
 vpc:
   cidr: 10.80.0.0/16
   nat:
-    gateway: HighlyAvailable
+    gateway: Single
   clusterEndpoints:
     publicAccess: true
     privateAccess: true
@@ -21,11 +21,11 @@ accessConfig:
   authenticationMode: API_AND_CONFIG_MAP
 managedNodeGroups:
   - name: applications
-    instanceType: t3.medium
+    instanceType: t3a.medium
     amiFamily: AmazonLinux2023
     desiredCapacity: 2
     minSize: 2
-    maxSize: 4
+    maxSize: 2
     privateNetworking: true
     volumeSize: 30
     volumeType: gp3
