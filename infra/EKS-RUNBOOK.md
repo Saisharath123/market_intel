@@ -1,6 +1,45 @@
 # EKS deployment runbook
 
-Status: prepared configuration. A cluster is not created merely by committing these files.
+Status (2026-10-21): deployed in Mumbai. Cluster `market-intel-prod` is active, with two Ready `t3a.medium` workers observed in ap-south-1a and ap-south-1b. Argo CD chart 10.10.5 is installed; application `market-intel` is Synced/Healthy, and dashboard, market-api and news-api each have 2/2 available replicas. Public ingress is disabled.
+
+Initial release: [PR #1](https://github.com/Saisharath123/market_intel/pull/1), merge `606aef9`. [Image publishing](https://github.com/Saisharath123/market_intel/actions/runs/39543966875) and [release CI](https://github.com/Saisharath123/market_intel/actions/runs/39544349214) succeeded. These are point-in-time verification results, not continuous uptime guarantees.
+
+## Start here: operate the deployed application
+
+Use an authenticated AWS CLI session for the approved IAM principal, plus kubectl. Do not paste access keys into chat or commit them. The Kubernetes API allowlist must include your administrative egress address; the initial CloudShell address can change on restart.
+
+```bash
+aws eks update-kubeconfig --region ap-south-1 --name market-intel-prod
+kubectl get nodes -L topology.kubernetes.io/zone
+kubectl -n argocd get application market-intel
+kubectl -n market-intel get deployments,pods
+kubectl -n market-intel port-forward service/dashboard 8502:8501
+```
+
+Open http://localhost:8502 on the same machine running port-forward. Use a local authenticated terminal for browser access; a port-forward in CloudShell listens inside CloudShell, not on your laptop. The existing Streamlit Community Cloud URL remains a separate deployment.
+
+Feed verification from the deployed dashboard: CNBC TV18 returned `ok`; Yahoo returned five of six current-session quotes around 10:02 IST, with TCS explicitly listed as missing. The dashboard health endpoint returned `ok`. A healthy deployment does not guarantee upstream data completeness or real-time exchange prices.
+
+For Argo CD, run `kubectl -n argocd port-forward service/argocd-server 8443:443` locally. Its initial administrator password is in Kubernetes secret `argocd-initial-admin-secret`; retrieve it privately in your own terminal and complete password rotation before sharing access. Do not export this secret into GitHub or application containers. Add organizational SSO before wider use.
+
+For each code change, open a PR and inspect **Test and build**. After merge, **Build EKS release images** publishes immutable ECR images and creates a `release/images-<run-id>` branch. Current repository policy blocks bot-created PRs, so open that branch's PR using the workflow's comparison link, review and merge it. Argo CD then deploys automatically. Verify all deployments show 2/2 and the application shows Synced/Healthy. For rollback, revert the previous digest release in Git and merge the revert.
+
+```mermaid
+flowchart LR
+  Code[GitHub code PR] --> CI[Tests and container checks]
+  CI --> Main[Merge to main]
+  Main --> Build[GitHub Actions: OIDC + build]
+  Build --> ECR[Private ECR: three images]
+  Build --> Release[Review and merge image digest PR]
+  Release --> Argo[Argo CD watches Git]
+  Argo --> EKS[EKS: two private workers]
+  ECR --> EKS
+  EKS --> UI[Dashboard: two replicas]
+  UI --> Market[Market API: two replicas]
+  UI --> News[News API: two replicas]
+```
+
+The approximate 730-hour baseline from the checked Mumbai rates is USD 150/month for the EKS control plane, two workers and one NAT gateway, before EBS, IPv4, logs, traffic and tax. No public load balancer was provisioned. This is an estimate, not a billing or free-tier guarantee.
 
 ## Intended resources
 
