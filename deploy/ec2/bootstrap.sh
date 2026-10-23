@@ -3,7 +3,7 @@ set -euo pipefail
 exec > >(tee -a /var/log/market-intel-bootstrap.log) 2>&1
 umask 077
 dnf upgrade -y
-dnf install -y docker git openssl curl python3
+dnf install -y docker git openssl python3
 systemctl enable --now docker
 install -d /usr/local/lib/docker/cli-plugins /opt/market-intel-secrets
 cd /tmp
