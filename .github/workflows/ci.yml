@@ -27,6 +27,8 @@ jobs:
           for service in dashboard market news; do
             docker build -f services/$service/Dockerfile -t market-intel-$service:test .
           done
+      - name: Validate EC2 monitoring Compose configuration
+        run: docker compose -f compose.yaml -f deploy/ec2/compose.yaml config --quiet
       - name: Start and smoke-test microservices
         run: |
           docker compose up --build --wait --wait-timeout 120
