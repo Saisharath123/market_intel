@@ -2,6 +2,20 @@
 
 Prepared 23 October 2026. This replaces the deleted EKS deployment with one Mumbai t3a.medium server (2 vCPU, 4 GiB RAM), one encrypted 30 GiB gp3 root disk and Docker Compose. It is a learning/internal deployment with a single point of failure, not a highly available production cluster.
 
+## Architecture
+
+```mermaid
+flowchart LR
+  User[Your computer] -->|IAM authenticated SSM tunnel| EC2[EC2 Docker host]
+  EC2 --> App[Streamlit app]
+  App --> APIs[Market and news APIs]
+  EC2 --> Grafana
+  Grafana --> Prometheus
+  Prometheus --> APIs
+  Prometheus --> Node[Node Exporter]
+  Prometheus --> Probes[HTTP endpoint probes]
+```
+
 ## Access and permissions
 
 No inbound security-group rules, SSH keys, NAT gateway, load balancer, EKS or VPN. A public IPv4 address supplies outbound HTTPS access; it does not expose application ports. The instance role has AmazonSSMManagedInstanceCore for authenticated administration. EC2 requires IMDSv2 with hop limit 1. App, Grafana and Prometheus are bound to loopback. Users need IAM-authorized AWS Session Manager port forwarding, AWS CLI and the Session Manager plugin locally. The tunnel encrypts traffic; localhost HTTP is carried within it. No public HTTPS URL is created.
@@ -28,8 +42,8 @@ aws ssm start-session --region ap-south-1 --target INSTANCE_ID --document-name A
 aws ssm start-session --region ap-south-1 --target INSTANCE_ID --document-name AWS-StartPortForwardingSession --parameters 'portNumber=["9090"],localPortNumber=["9090"]'
 ```
 
-Grafana: http://localhost:3000 — folder Market Intel, dashboards Market Intel APIs and Market Intel EC2 Overview.
-App: http://localhost:8502. Prometheus: http://localhost:9090 — Targets and Alerts.
+Grafana: http://localhost:3000 â€” folder Market Intel, dashboards Market Intel APIs and Market Intel EC2 Overview.
+App: http://localhost:8502. Prometheus: http://localhost:9090 â€” Targets and Alerts.
 
 ## What is monitored
 
