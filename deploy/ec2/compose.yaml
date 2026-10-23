@@ -1,0 +1,77 @@
+services:
+  market-api:
+    mem_limit: 384m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+  news-api:
+    mem_limit: 256m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+  dashboard:
+    mem_limit: 768m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    environment:
+      HOME: /tmp
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    restart: unless-stopped
+    mem_limit: 512m
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.path=/prometheus, --storage.tsdb.retention.time=7d, --storage.tsdb.retention.size=5GB]
+    ports: ['127.0.0.1:9090:9090']
+    volumes:
+      - ./deploy/ec2/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/ec2/alerts.yaml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    extra_hosts: ['host.docker.internal:host-gateway']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  grafana:
+    image: grafana/grafana:13.2.4
+    restart: unless-stopped
+    mem_limit: 384m
+    ports: ['127.0.0.1:3000:3000']
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+      GF_SERVER_ROOT_URL: http://localhost:3000
+    secrets: [grafana_admin_password]
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deploy/ec2/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/ec2/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    restart: unless-stopped
+    mem_limit: 96m
+    network_mode: host
+    pid: host
+    command: [--path.rootfs=/host, --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($|/)]
+    volumes: ['/:/host:ro,rslave']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  blackbox:
+    image: prom/blackbox-exporter:v0.29.1
+    restart: unless-stopped
+    mem_limit: 64m
+    command: [--config.file=/etc/blackbox/config.yml]
+    volumes: ['./deploy/ec2/blackbox.yaml:/etc/blackbox/config.yml:ro']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+volumes:
+  prometheus_data:
+  grafana_data:
+secrets:
+  grafana_admin_password:
+    file: /opt/market-intel-secrets/grafana-admin-password
