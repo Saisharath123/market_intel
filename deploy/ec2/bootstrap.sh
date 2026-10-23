@@ -13,7 +13,7 @@ printf '%s  docker-compose\n' "$(cut -d' ' -f1 compose.sha256)" | sha256sum -c -
 install -m 755 docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
 curl --fail --location --retry 3 -o buildx-v0.38.1.linux-amd64 https://github.com/docker/buildx/releases/download/v0.38.1/buildx-v0.38.1.linux-amd64
 curl --fail --location --retry 3 -o buildx-checksums.txt https://github.com/docker/buildx/releases/download/v0.38.1/checksums.txt
-grep ' buildx-v0.38.1.linux-amd64$' buildx-checksums.txt | sha256sum -c -
+grep 'buildx-v0.38.1.linux-amd64$' buildx-checksums.txt | sha256sum -c -
 install -m 755 buildx-v0.38.1.linux-amd64 /usr/local/lib/docker/cli-plugins/docker-buildx
 if ! test -d /opt/market-intel/.git; then git clone https://github.com/Saisharath123/market_intel.git /opt/market-intel; fi
 cd /opt/market-intel
