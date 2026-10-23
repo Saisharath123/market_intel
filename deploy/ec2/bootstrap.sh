@@ -19,6 +19,8 @@ if ! test -d /opt/market-intel/.git; then git clone https://github.com/Saisharat
 cd /opt/market-intel
 git fetch origin "$PROJECT_REVISION"
 git checkout --detach "$PROJECT_REVISION"
+# The checked-out public source and monitoring files must be readable by non-root containers.
+chmod -R a+rX /opt/market-intel
 if ! test -s /opt/market-intel-secrets/grafana-admin-password; then openssl rand -hex 24 > /opt/market-intel-secrets/grafana-admin-password; fi
 chmod 755 /opt/market-intel-secrets
 chmod 444 /opt/market-intel-secrets/grafana-admin-password
