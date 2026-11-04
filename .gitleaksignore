@@ -1,0 +1,4 @@
+# Exact historical false positive: the unit-test fixture decodes to
+# "not-a-real-password". The test now computes it at runtime.
+# No credential values, paths, rules or later commits are excluded.
+54d406e042ba3689501603b608163317a1a0cba0:tests/test_provision.py:generic-api-key:186

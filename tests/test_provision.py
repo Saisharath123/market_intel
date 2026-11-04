@@ -1,5 +1,6 @@
 """No-network regression tests for infrastructure safety boundaries."""
 
+import base64
 import importlib.util
 import json
 from pathlib import Path
@@ -183,7 +184,8 @@ def test_owned_grafana_credentials_are_preserved_on_rerun(tmp_path, monkeypatch)
     op = operator(tmp_path, '--execute')
     current = {'metadata': {'labels': {'app.kubernetes.io/part-of': 'market-intel',
                                        'app.kubernetes.io/managed-by': 'market-intel-provision'}},
-               'data': {'admin-user': 'YWRtaW4=', 'admin-password': 'bm90LWEtcmVhbC1wYXNzd29yZA=='}}
+               'data': {'admin-user': base64.b64encode(b'admin').decode('ascii'),
+                        'admin-password': base64.b64encode(b'not-a-real-password').decode('ascii')}}
     def kubectl(*parts, **kwargs):
         assert parts[2] == 'get'
         return json.dumps(current)
