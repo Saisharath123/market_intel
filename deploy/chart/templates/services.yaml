@@ -1,4 +1,5 @@
 {{- range $name, $service := .Values.services }}
+{{- if not (and $.Values.rollouts.enabled (eq $name "market-api")) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -21,75 +22,8 @@ spec:
       labels:
         app: {{ $name }}
     spec:
-      automountServiceAccountToken: false
-      terminationGracePeriodSeconds: 60
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 10001
-        runAsGroup: 10001
-        fsGroup: 10001
-        seccompProfile:
-          type: RuntimeDefault
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: DoNotSchedule
-          labelSelector:
-            matchLabels:
-              app: {{ $name }}
-      containers:
-        - name: {{ $name }}
-          image: {{ required (printf "services.%s.image must be an approved image digest" $name) $service.image | quote }}
-          imagePullPolicy: IfNotPresent
-          ports:
-            - name: http
-              containerPort: {{ $service.port }}
-          env:
-            - name: PYTHONDONTWRITEBYTECODE
-              value: '1'
-            - name: HOME
-              value: /tmp
-            - name: XDG_CACHE_HOME
-              value: /tmp/cache
-            {{- range $key, $value := $service.env }}
-            - name: {{ $key }}
-              value: {{ $value | quote }}
-            {{- end }}
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: '1'
-              memory: {{ $service.memory }}
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: [ALL]
-          volumeMounts:
-            - name: tmp
-              mountPath: /tmp
-          startupProbe:
-            httpGet:
-              path: {{ $service.healthPath }}
-              port: http
-            failureThreshold: 30
-            periodSeconds: 5
-          readinessProbe:
-            httpGet:
-              path: {{ $service.healthPath }}
-              port: http
-            periodSeconds: 10
-          livenessProbe:
-            httpGet:
-              path: {{ $service.healthPath }}
-              port: http
-            periodSeconds: 20
-      volumes:
-        - name: tmp
-          emptyDir:
-            sizeLimit: 256Mi
+      {{- include "market-intel.podSpec" (dict "name" $name "service" $service "root" $) | nindent 6 }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -97,6 +31,9 @@ metadata:
   name: {{ $name }}
   labels:
     app: {{ $name }}
+    {{- if or (not $.Values.rollouts.enabled) (ne $name "market-api") }}
+    metrics-scrape: 'true'
+    {{- end }}
 spec:
   type: ClusterIP
   selector:
@@ -111,7 +48,11 @@ kind: PodDisruptionBudget
 metadata:
   name: {{ $name }}
 spec:
+  {{- if gt (int $service.replicas) 1 }}
   minAvailable: 1
+  {{- else }}
+  maxUnavailable: 1
+  {{- end }}
   selector:
     matchLabels:
       app: {{ $name }}

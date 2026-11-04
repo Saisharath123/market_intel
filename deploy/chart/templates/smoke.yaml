@@ -1,0 +1,58 @@
+{{- if .Values.smokeTest.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: market-intel-smoke
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+data:
+  smoke.py: |
+{{ .Files.Get "files/smoke.py" | indent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: market-intel-smoke
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 180
+  template:
+    metadata:
+      labels:
+        app: market-intel-smoke
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: smoke
+          image: {{ required "Approve the market API image before enabling the smoke hook" (index .Values.services "market-api").image | quote }}
+          command: [python, /checks/smoke.py]
+          {{- if eq .Values.environment "staging" }}
+          args: [--expect-demo]
+          {{- end }}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: checks
+              mountPath: /checks
+              readOnly: true
+      volumes:
+        - name: checks
+          configMap:
+            name: market-intel-smoke
+{{- end }}

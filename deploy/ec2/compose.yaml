@@ -1,0 +1,46 @@
+services:
+  market-api:
+    mem_limit: 384m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4318
+    extra_hosts: ['host.docker.internal:host-gateway']
+  news-api:
+    mem_limit: 256m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4318
+    extra_hosts: ['host.docker.internal:host-gateway']
+  dashboard:
+    mem_limit: 768m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    environment:
+      HOME: /tmp
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4318
+    extra_hosts: ['host.docker.internal:host-gateway']
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.163.2
+    restart: unless-stopped
+    mem_limit: 384m
+    network_mode: host
+    pid: host
+    command: [--config=/etc/otelcol/config.yaml]
+    read_only: true
+    tmpfs: [/tmp]
+    volumes:
+      - ./deploy/ec2/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+      - /:/hostfs:ro,rslave
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}

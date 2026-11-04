@@ -5,33 +5,41 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: {{ $name }}
+  labels:
+    app.kubernetes.io/part-of: market-intel
 spec:
   selector:
     matchLabels:
       app: {{ $name }}
+      metrics-scrape: "true"
+  podTargetLabels:
+    - rollouts-pod-template-hash
   endpoints:
     - port: http
       path: /metrics
       interval: 30s
+      honorLabels: true
 {{- end }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: market-intel
+  labels:
+    app.kubernetes.io/part-of: market-intel
 spec:
   groups:
-    - name: market-intel
+    - name: market-intel-{{ .Release.Namespace }}
       rules:
         - alert: MarketIntelServiceDown
-          expr: up{namespace="market-intel"} == 0
+          expr: up{namespace={{ .Release.Namespace | quote }},job=~"market-api.*|news-api.*"} == 0
           for: 5m
           labels:
             severity: critical
           annotations:
             summary: A Market Intel API scrape target is down
         - alert: MarketIntelHighErrorRate
-          expr: sum by (service) (rate(market_intel_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum by (service) (rate(market_intel_http_requests_total[5m])), 0.001) > 0.05
+          expr: sum by (namespace, service) (rate(market_intel_http_requests_total{namespace={{ .Release.Namespace | quote }},status=~"5.."}[5m])) / clamp_min(sum by (namespace, service) (rate(market_intel_http_requests_total{namespace={{ .Release.Namespace | quote }}}[5m])), 0.001) > 0.05
           for: 5m
           labels:
             severity: warning

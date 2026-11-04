@@ -1,0 +1,23 @@
+groups:
+  - name: market-intel
+    rules:
+      - alert: ScrapeTargetDown
+        expr: up == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: 'Prometheus cannot scrape {{ $labels.instance }}'}
+      - alert: ApplicationEndpointDown
+        expr: probe_success == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: 'Endpoint down: {{ $labels.instance }}'}
+      - alert: HostMemoryHigh
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.9
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: 'EC2 memory above 90%'}
+      - alert: HostDiskLow
+        expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay",mountpoint="/"} / node_filesystem_size_bytes < 0.15
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: 'EC2 root disk below 15% free'}

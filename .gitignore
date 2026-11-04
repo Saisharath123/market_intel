@@ -10,3 +10,7 @@ __pycache__/
 *.p12
 *.pfx
 .market-intel-private/
+work/
+coverage.xml
+.coverage
+htmlcov/

@@ -1,9 +1,14 @@
 services:
   dashboard:
-    image: 521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/dashboard@sha256:1ae772671025b21bd3649760d87ea3617da657c4967e71913e949f308440b42e
+    image: '' # Filled only by an approved production promotion PR.
   market-api:
-    image: 521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/market@sha256:b399326aacad1d3b1e8ffcd7d685f1a13f8650e72cc6c59a823dcd4da90c119a
+    image: '' # Filled only by an approved production promotion PR.
   news-api:
-    image: 521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/news@sha256:9a88a1d92210f68cfc8b1313acced4820b09c926959dc7e09358c33f497543a0
+    image: '' # Filled only by an approved production promotion PR.
 monitoring:
+  enabled: true
+
+environment: production
+requireImageDigest: true
+rollouts:
   enabled: true

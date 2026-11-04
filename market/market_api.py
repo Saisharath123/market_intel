@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 from market.service import insights, quotes
 from market.metrics import instrument
+from market.telemetry import configure_telemetry
 
 app = FastAPI(title='Market Intel Market API', version='0.2.0')
 instrument(app, 'market')
+configure_telemetry('market-intel-market', app)
 
 
 @app.get('/health')

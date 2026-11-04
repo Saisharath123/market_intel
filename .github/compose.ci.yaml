@@ -1,0 +1,7 @@
+services:
+  market-api:
+    image: market-intel-market:test
+  news-api:
+    image: market-intel-news:test
+  dashboard:
+    image: market-intel-dashboard:test

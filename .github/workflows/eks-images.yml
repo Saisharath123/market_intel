@@ -1,99 +1,127 @@
 name: Build EKS release images
 on:
   workflow_dispatch:
+    inputs:
+      confirm_publish:
+        description: Publish the tested image set and create a staging release PR.
+        type: boolean
+        required: true
+        default: false
   push:
     branches: [main]
     paths:
-      - 'app.py'
-      - 'market/**'
-      - 'services/**'
-      - '.github/workflows/eks-images.yml'
+      - app.py
+      - market/**
+      - services/**
+      - requirements*.txt
+      - Dockerfile
+      - compose.yaml
+      - .github/actions/**
+      - .github/scripts/**
+      - .github/workflows/ci.yml
+      - .github/workflows/eks-images.yml
 permissions:
   contents: read
+concurrency:
+  group: market-intel-image-release
+  cancel-in-progress: false
 jobs:
+  validation:
+    if: github.ref == 'refs/heads/main' && vars.EKS_RELEASE_ENABLED == 'true' && (github.event_name == 'push' || inputs.confirm_publish == true)
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
   release:
-    if: vars.EKS_RELEASE_ENABLED == 'true' && github.ref == 'refs/heads/main'
+    needs: validation
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 50
     permissions:
       contents: write
       pull-requests: write
       id-token: write
-    concurrency:
-      group: eks-images-main
-      cancel-in-progress: false
     env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
       MARKET_MODE: demo
       NEWS_MODE: demo
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
-      - run: pip install -r requirements-dev.txt
-      - run: ruff check .
-      - run: pytest -q
-      - name: Verify federation identity claims
-        uses: actions/github-script@v7
+      - run: pip install 'PyYAML>=6,<7'
+      - name: Federate using the repository-scoped publisher role
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
-          script: |
-            const token = await core.getIDToken('sts.amazonaws.com');
-            const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
-            core.info(JSON.stringify({sub: claims.sub, aud: claims.aud, repository: claims.repository, ref: claims.ref}));
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.EKS_IMAGE_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.EKS_IMAGE_ROLE_ARN || 'arn:aws:iam::521595303406:role/market-intel-github-publisher' }}
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: '521595303406'
+          role-session-name: market-intel-ci-${{ github.run_id }}
           retry-max-attempts: 2
-      - uses: aws-actions/amazon-ecr-login@v2
+      - uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2
         id: ecr
-      - name: Build and publish each service
+      - name: Reuse already published immutable artifacts on reruns
+        id: existing
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$REGISTRY" = "521595303406.dkr.ecr.$AWS_REGION.amazonaws.com"
+          for service in dashboard market news; do
+            digest=$(aws ecr batch-get-image --repository-name "market-intel/$service" --image-ids "imageTag=$GITHUB_SHA" --query 'images[0].imageId.imageDigest' --output text)
+            if [ "$digest" = None ]; then
+              echo "$service=false" >> "$GITHUB_OUTPUT"
+            else
+              [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+              docker pull "$REGISTRY/market-intel/$service@$digest"
+              docker tag "$REGISTRY/market-intel/$service@$digest" "market-intel-$service:test"
+              echo "$service=true" >> "$GITHUB_OUTPUT"
+            fi
+          done
+      - name: Build, scan and contract-test the exact release artifacts
+        uses: ./.github/actions/verify-images
+        with:
+          skip-dashboard: ${{ steps.existing.outputs.dashboard }}
+          skip-market: ${{ steps.existing.outputs.market }}
+          skip-news: ${{ steps.existing.outputs.news }}
+      - name: Publish those same artifacts and require completed ECR scans
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          EXISTING_DASHBOARD: ${{ steps.existing.outputs.dashboard }}
+          EXISTING_MARKET: ${{ steps.existing.outputs.market }}
+          EXISTING_NEWS: ${{ steps.existing.outputs.news }}
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p work
           printf 'services:\n' > work/release-values.yaml
           for service in dashboard market news; do
+            key="EXISTING_${service^^}"
             image="$REGISTRY/market-intel/$service"
-            existing=$(aws ecr batch-get-image --repository-name "market-intel/$service" --image-ids "imageTag=$GITHUB_SHA" --query 'images[0].imageId.imageDigest' --output text)
-            if [ "$existing" = None ]; then
-              docker build -f "services/$service/Dockerfile" -t "$image:$GITHUB_SHA" .
+            if [ "${!key}" != true ]; then
+              docker tag "market-intel-$service:test" "$image:$GITHUB_SHA"
               docker push "$image:$GITHUB_SHA"
             fi
             digest=$(aws ecr describe-images --repository-name "market-intel/$service" --image-ids "imageTag=$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text)
-            [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
             python infra/check-image-scan.py "market-intel/$service" "$digest"
-            key="$service"
-            if [ "$service" != dashboard ]; then key="$service-api"; fi
-            printf '  %s:\n    image: "%s@%s"\n' "$key" "$image" "$digest" >> work/release-values.yaml
+            name="$service"
+            if [ "$service" != dashboard ]; then name="$service-api"; fi
+            printf '  %s:\n    image: "%s@%s"\n' "$name" "$image" "$digest" >> work/release-values.yaml
           done
-      - name: Propose reviewed GitOps release
+          python .github/scripts/gitops_release.py manifest --source work/release-values.yaml --region "$AWS_REGION"
+      - name: Propose staging GitOps release
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          branch="release/images-$GITHUB_RUN_ID"
-          git switch -c "$branch"
-          # Patch image digests only; preserve approved ingress configuration.
-          python - <<'PY'
-          from pathlib import Path
-          import yaml
-          target = Path('deploy/chart/values-production.yaml')
-          existing = yaml.safe_load(target.read_text()) or {}
-          release = yaml.safe_load(Path('work/release-values.yaml').read_text())
-          services = existing.setdefault('services', {})
-          for name, config in release['services'].items():
-              services.setdefault(name, {})['image'] = config['image']
-          target.write_text(yaml.safe_dump(existing, sort_keys=False))
-          PY
-          git add deploy/chart/values-production.yaml
-          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "Release service images from $GITHUB_SHA"
-          git push origin "$branch"
-          printf 'Deploy the three tested service images built from commit %s. Review image digests and merge to let Argo CD reconcile the release. Revert this change to roll back.\n' "$GITHUB_SHA" > work/release-body.txt
-          if ! gh pr create --base main --head "$branch" --title 'Release market-intel service images' --body-file work/release-body.txt; then
-            echo '::warning::Repository policy prevented bot PR creation. The release branch is preserved for a maintainer to open and review its PR.'
-            printf 'Open and review the release PR: https://github.com/%s/compare/main...%s?expand=1\n' "$GITHUB_REPOSITORY" "$branch" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          SOURCE_VALUES: work/release-values.yaml
+        run: bash .github/scripts/propose-release.sh staging
+      - name: Retain release vulnerability reports and SBOMs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-image-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work/image-reports/
+          retention-days: 7
+          if-no-files-found: ignore
