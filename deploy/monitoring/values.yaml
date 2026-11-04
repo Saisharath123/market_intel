@@ -1,5 +1,12 @@
-# kube-prometheus-stack 92.11.0. Private interfaces; credentials generated in-cluster.
+# kube-prometheus-stack 92.11.0. Private services, accessed through kubectl port-forward.
+# Install as release "monitoring" in namespace "monitoring". Do not expose these UIs publicly.
 grafana:
+  # Bootstrap generates/reuses this in-cluster Secret; no known default password.
+  adminPassword: ''
+  admin:
+    existingSecret: market-intel-grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
   service:
     type: ClusterIP
   persistence:
@@ -15,10 +22,11 @@ grafana:
     users:
       allow_sign_up: false
     security:
-      cookie_secure: true
+      # Local port-forward uses HTTP. Enable secure cookies when adding an HTTPS ingress.
+      cookie_secure: false
       cookie_samesite: lax
     server:
-      root_url: https://grafana.market-intel.internal
+      root_url: http://localhost:3000
   sidecar:
     dashboards:
       searchNamespace: monitoring
@@ -34,7 +42,7 @@ prometheus:
       matchExpressions:
         - key: kubernetes.io/metadata.name
           operator: In
-          values: [market-intel, monitoring, kube-system]
+          values: [market-intel, market-intel-staging, monitoring, kube-system, argo-rollouts]
     resources:
       requests: {cpu: 200m, memory: 512Mi}
       limits: {cpu: '1', memory: 1536Mi}

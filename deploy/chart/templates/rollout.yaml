@@ -1,0 +1,102 @@
+{{- if .Values.rollouts.enabled }}
+{{- if not .Values.monitoring.enabled }}
+{{- fail "rollouts.enabled requires monitoring.enabled: true" }}
+{{- end }}
+{{- $service := index .Values.services "market-api" }}
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: market-api
+spec:
+  replicas: {{ $service.replicas }}
+  revisionHistoryLimit: 5
+  progressDeadlineSeconds: 900
+  progressDeadlineAbort: true
+  minReadySeconds: 10
+  analysis:
+    successfulRunHistoryLimit: 5
+    unsuccessfulRunHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: market-api
+  template:
+    metadata:
+      labels:
+        app: market-api
+    spec:
+      {{- include "market-intel.podSpec" (dict "name" "market-api" "service" $service "root" .) | nindent 6 }}
+  strategy:
+    canary:
+      stableService: market-api
+      canaryService: market-api-canary
+      maxSurge: 1
+      maxUnavailable: 0
+      scaleDownDelaySeconds: 60
+      abortScaleDownDelaySeconds: 60
+      trafficRouting:
+        alb:
+          ingress: market-api-canary
+          rootService: market-api-root
+          servicePort: {{ $service.port }}
+      steps:
+        - setWeight: 10
+        - pause:
+            duration: {{ .Values.rollouts.warmupSeconds }}s
+        - analysis:
+            templates:
+              - templateName: market-api-canary-quality
+            args:
+              - name: canary-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
+        - setWeight: 50
+        - pause:
+            duration: {{ .Values.rollouts.warmupSeconds }}s
+        - analysis:
+            templates:
+              - templateName: market-api-canary-quality
+            args:
+              - name: canary-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
+        - setWeight: 100
+        - pause:
+            duration: {{ .Values.rollouts.warmupSeconds }}s
+        - analysis:
+            templates:
+              - templateName: market-api-canary-quality
+            args:
+              - name: canary-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: market-api-canary
+  labels:
+    app: market-api
+spec:
+  selector:
+    app: market-api
+  ports:
+    - name: http
+      port: {{ $service.port }}
+      targetPort: http
+---
+# Scrape each revision pod once, rather than stable/canary Services separately.
+apiVersion: v1
+kind: Service
+metadata:
+  name: market-api-metrics
+  labels:
+    app: market-api
+    metrics-scrape: 'true'
+spec:
+  selector:
+    app: market-api
+  ports:
+    - name: http
+      port: {{ $service.port }}
+      targetPort: http
+{{- end }}

@@ -1,45 +1,125 @@
 name: Test and build
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 jobs:
-  test:
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_ENABLE_COMMENTS: 'false'
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
+  python:
+    name: Tests and optional Sonar gate
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       MARKET_MODE: demo
       NEWS_MODE: demo
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
           cache: pip
       - run: pip install -r requirements-dev.txt
       - run: ruff check .
-      - run: pytest -q
-      - run: docker build -t india-market-pulse:test .
-      - name: Verify each microservice image
-        run: |
-          for service in dashboard market news; do
-            docker build -f services/$service/Dockerfile -t market-intel-$service:test .
-          done
-      - name: Start and smoke-test microservices
-        run: |
-          docker compose up --build --wait --wait-timeout 120
-          curl --fail http://127.0.0.1:8000/api/v1/quotes
-          curl --fail http://127.0.0.1:8001/api/v1/news
-          curl --fail http://127.0.0.1:8501/_stcore/health
-      - name: Stop smoke-test services
+      - run: pytest -q --cov=market --cov-report=xml:coverage.xml --cov-report=term-missing
+      - name: Require configured Sonar credentials
+        if: vars.SONAR_ENABLED == 'true'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        run: test -n "$SONAR_TOKEN" && test -n "$SONAR_HOST_URL"
+      - name: Sonar analysis and blocking quality gate
+        if: vars.SONAR_ENABLED == 'true'
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.timeout=300
+      - name: Record pending Sonar setup
+        if: vars.SONAR_ENABLED != 'true'
+        run: echo 'SonarQube is pending user connection; no Sonar quality gate was executed.' >> "$GITHUB_STEP_SUMMARY"
+  containers:
+    name: Three image security and contract checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      MARKET_MODE: demo
+      NEWS_MODE: demo
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+      - uses: ./.github/actions/verify-images
+      - name: Retain vulnerability reports and SBOMs
         if: always()
-        run: docker compose down
-      - uses: azure/setup-helm@v4.3.0
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: image-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: work/image-reports/
+          retention-days: 7
+          if-no-files-found: ignore
+  manifests:
+    name: Staging and production manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+      - run: pip install 'PyYAML>=6,<7'
+      - uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112 # v4.3.0
         with:
           version: v3.19.0
-      - name: Validate Kubernetes chart
+      - name: Render both environments with representative immutable images
+        shell: bash
         run: |
-          helm lint deploy/chart --set services.dashboard.image=example/dashboard:ci --set services.market-api.image=example/market:ci --set services.news-api.image=example/news:ci
-          helm template market-intel deploy/chart --kube-version 1.36.0 --set services.dashboard.image=example/dashboard:ci --set services.market-api.image=example/market:ci --set services.news-api.image=example/news:ci > /tmp/market-intel-rendered.yaml
+          set -euo pipefail
+          mkdir -p work
+          digest="sha256:$(printf 'a%.0s' {1..64})"
+          for environment in staging production; do
+            namespace=market-intel
+            if [ "$environment" = staging ]; then namespace=market-intel-staging; fi
+            args=(--namespace "$namespace" -f deploy/chart/values.yaml -f "deploy/chart/values-$environment.yaml")
+            for pair in dashboard:dashboard market-api:market news-api:news; do
+              args+=(--set-string "services.${pair%%:*}.image=521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/${pair##*:}@$digest")
+            done
+            helm lint deploy/chart "${args[@]}"
+            helm template market-intel deploy/chart --kube-version 1.36.0 "${args[@]}" > "work/chart-$environment.yaml"
+          done
+      - name: Prove canary queries reject failed or missing traffic
+        run: |
+          python deploy/rollouts/check-analysis.py work/chart-production.yaml work/promql-tests.yaml
+          docker run --rm --entrypoint /bin/promtool -v "$PWD:/workspace" -w /workspace quay.io/prometheus/prometheus:v3.15.1 test rules work/promql-tests.yaml
+  quality-gate:
+    name: Quality gate
+    if: always()
+    needs: [secrets, python, containers, manifests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every mandatory check
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
+        run: test "$RESULTS" = 'success,success,success,success'

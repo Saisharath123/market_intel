@@ -1,36 +1,10 @@
-name: Publish container
+name: Archived GHCR publisher
 on:
   workflow_dispatch:
 permissions:
   contents: read
-  packages: write
 jobs:
-  release:
-    if: github.ref == 'refs/heads/main'
+  archived:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      MARKET_MODE: demo
-      NEWS_MODE: demo
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: pip
-      - run: pip install -r requirements-dev.txt
-      - run: ruff check .
-      - run: pytest -q
-      - name: Set image name
-        shell: bash
-        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ env.IMAGE }}:${{ github.sha }}
+      - run: echo 'Use Build EKS release images, followed by the GitOps promotion workflow. This legacy GHCR path is disabled.'

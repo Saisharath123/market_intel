@@ -1,0 +1,78 @@
+name: Build and verify three service images
+description: Load each release artifact once, block vulnerable images, and exercise those exact containers.
+inputs:
+  skip-dashboard:
+    default: 'false'
+    description: Reuse a previously pulled immutable dashboard image.
+  skip-market:
+    default: 'false'
+    description: Reuse a previously pulled immutable market image.
+  skip-news:
+    default: 'false'
+    description: Reuse a previously pulled immutable news image.
+runs:
+  using: composite
+  steps:
+    - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+    - name: Build dashboard
+      if: inputs.skip-dashboard != 'true'
+      uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+      with:
+        context: .
+        file: services/dashboard/Dockerfile
+        load: true
+        push: false
+        tags: market-intel-dashboard:test
+        cache-from: type=gha,scope=market-intel-dashboard
+        cache-to: type=gha,scope=market-intel-dashboard,mode=max
+        provenance: false
+    - name: Build market API
+      if: inputs.skip-market != 'true'
+      uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+      with:
+        context: .
+        file: services/market/Dockerfile
+        load: true
+        push: false
+        tags: market-intel-market:test
+        cache-from: type=gha,scope=market-intel-market
+        cache-to: type=gha,scope=market-intel-market,mode=max
+        provenance: false
+    - name: Build news API
+      if: inputs.skip-news != 'true'
+      uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+      with:
+        context: .
+        file: services/news/Dockerfile
+        load: true
+        push: false
+        tags: market-intel-news:test
+        cache-from: type=gha,scope=market-intel-news
+        cache-to: type=gha,scope=market-intel-news,mode=max
+        provenance: false
+    - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+      with:
+        version: v0.76.1
+        cache: true
+    - name: Mandatory pre-push image vulnerability scan and SBOM
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p work/image-reports
+        for service in dashboard market news; do
+          image="market-intel-$service:test"
+          trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --timeout 10m --format json --output "work/image-reports/trivy-$service.json" "$image"
+          trivy image --format cyclonedx --timeout 10m --output "work/image-reports/sbom-$service.cdx.json" "$image"
+        done
+    - name: Test the exact built images together
+      shell: bash
+      env:
+        MARKET_MODE: demo
+        NEWS_MODE: demo
+      run: |
+        set -euo pipefail
+        compose=(docker compose -f compose.yaml -f .github/compose.ci.yaml)
+        trap '"${compose[@]}" logs --no-color --tail=100; "${compose[@]}" down --volumes' EXIT
+        "${compose[@]}" config --quiet
+        "${compose[@]}" up --no-build --wait --wait-timeout 180
+        python deploy/chart/files/smoke.py --market-url http://127.0.0.1:8000 --news-url http://127.0.0.1:8001 --dashboard-url http://127.0.0.1:8501 --expect-demo

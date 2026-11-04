@@ -30,3 +30,16 @@ ingress:
   host: ''
 monitoring:
   enabled: false
+
+# CI may render test tags. Staging and production must pin sha256 digests.
+environment: local
+requireImageDigest: false
+smokeTest:
+  enabled: false
+rollouts:
+  enabled: false
+  prometheusAddress: http://monitoring-kube-prometheus-prometheus.monitoring.svc:9090
+  warmupSeconds: 120
+  minimumRequests: 20
+  maximumErrorRatio: 0.01
+  maximumP95Seconds: 2

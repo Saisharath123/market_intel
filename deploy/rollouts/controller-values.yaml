@@ -1,0 +1,38 @@
+# Verified against argo/argo-rollouts chart 2.43.8, application v1.10.1.
+# CloudFormation associates this service account through EKS Pod Identity.
+# No IRSA role annotation or static AWS credential is required.
+controller:
+  replicas: 1
+  awsVerifyTargetGroup: true
+  extraArgs:
+    - --aws-region=ap-south-1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      interval: 30s
+serviceAccount:
+  create: true
+  name: argo-rollouts
+dashboard:
+  enabled: false
+providerRBAC:
+  enabled: true
+  providers:
+    istio: false
+    smi: false
+    ambassador: false
+    awsLoadBalancerController: true
+    awsAppMesh: false
+    traefik: false
+    apisix: false
+    contour: false
+    glooPlatform: false
+    gatewayAPI: false

@@ -1,0 +1,55 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+  hostmetrics:
+    collection_interval: 60s
+    root_path: /hostfs
+    scrapers:
+      cpu: {}
+      memory: {}
+      disk: {}
+      network: {}
+      load: {}
+      filesystem:
+        exclude_mount_points:
+          mount_points: ['^/(dev|proc|sys|run|var/lib/docker)($|/)']
+          match_type: regexp
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  resource/host:
+    attributes:
+      - {key: service.name, value: market-intel-ec2, action: upsert}
+  batch:
+    timeout: 5s
+    send_batch_size: 256
+exporters:
+  debug:
+    verbosity: detailed
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]
+    metrics/apps:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]
+    metrics/host:
+      receivers: [hostmetrics]
+      processors: [memory_limiter, resource/host, batch]
+      exporters: [debug]

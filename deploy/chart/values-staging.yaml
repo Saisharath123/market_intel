@@ -1,0 +1,23 @@
+# A release PR writes the SAME built digests here, then promotion copies them.
+environment: staging
+requireImageDigest: true
+services:
+  dashboard:
+    replicas: 1
+    image: ''
+  market-api:
+    replicas: 1
+    image: ''
+    env:
+      MARKET_MODE: demo
+  news-api:
+    replicas: 1
+    image: ''
+    env:
+      NEWS_MODE: demo
+monitoring:
+  enabled: true
+smokeTest:
+  enabled: true
+rollouts:
+  enabled: false

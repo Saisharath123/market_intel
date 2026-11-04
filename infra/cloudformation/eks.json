@@ -1,0 +1,592 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Market Intel EKS learning environment: private workers, two AZs, one NAT; GitHub Actions owns CI and Argo CD owns application delivery.",
+  "Resources": {
+    "Vpc": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.80.0.0/16",
+        "EnableDnsSupport": true,
+        "EnableDnsHostnames": true,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "market-intel-sre"
+          }
+        ]
+      }
+    },
+    "Gateway": {
+      "Type": "AWS::EC2::InternetGateway",
+      "Properties": {}
+    },
+    "GatewayAttach": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "InternetGatewayId": {
+          "Ref": "Gateway"
+        }
+      }
+    },
+    "PublicRoutes": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        }
+      }
+    },
+    "InternetRoute": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "PublicRoutes"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": {
+          "Ref": "Gateway"
+        }
+      },
+      "DependsOn": "GatewayAttach"
+    },
+    "Public0": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "AvailabilityZone": "ap-south-1a",
+        "CidrBlock": "10.80.0.0/24",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "kubernetes.io/role/elb",
+            "Value": "1"
+          }
+        ]
+      }
+    },
+    "Private0": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "AvailabilityZone": "ap-south-1a",
+        "CidrBlock": "10.80.10.0/24",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "kubernetes.io/role/internal-elb",
+            "Value": "1"
+          }
+        ]
+      }
+    },
+    "PublicAssoc0": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "Public0"
+        },
+        "RouteTableId": {
+          "Ref": "PublicRoutes"
+        }
+      }
+    },
+    "Public1": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "AvailabilityZone": "ap-south-1b",
+        "CidrBlock": "10.80.1.0/24",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "kubernetes.io/role/elb",
+            "Value": "1"
+          }
+        ]
+      }
+    },
+    "Private1": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "AvailabilityZone": "ap-south-1b",
+        "CidrBlock": "10.80.11.0/24",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [
+          {
+            "Key": "kubernetes.io/role/internal-elb",
+            "Value": "1"
+          }
+        ]
+      }
+    },
+    "PublicAssoc1": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "Public1"
+        },
+        "RouteTableId": {
+          "Ref": "PublicRoutes"
+        }
+      }
+    },
+    "NatAddress": {
+      "Type": "AWS::EC2::EIP",
+      "Properties": {
+        "Domain": "vpc"
+      }
+    },
+    "Nat": {
+      "Type": "AWS::EC2::NatGateway",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "Public0"
+        },
+        "AllocationId": {
+          "Fn::GetAtt": [
+            "NatAddress",
+            "AllocationId"
+          ]
+        }
+      },
+      "DependsOn": "InternetRoute"
+    },
+    "PrivateRoutes": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        }
+      }
+    },
+    "NatRoute": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "PrivateRoutes"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "NatGatewayId": {
+          "Ref": "Nat"
+        }
+      }
+    },
+    "PrivateAssoc0": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "Private0"
+        },
+        "RouteTableId": {
+          "Ref": "PrivateRoutes"
+        }
+      }
+    },
+    "PrivateAssoc1": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "Private1"
+        },
+        "RouteTableId": {
+          "Ref": "PrivateRoutes"
+        }
+      }
+    },
+    "ClusterRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "eks.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+        ],
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "market-intel"
+          }
+        ]
+      }
+    },
+    "NodeRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ec2.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+          "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly",
+          {
+            "Fn::If": [
+              "AttachNodeCniPolicy",
+              "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
+              {
+                "Ref": "AWS::NoValue"
+              }
+            ]
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "market-intel"
+          }
+        ]
+      }
+    },
+    "Cluster": {
+      "Type": "AWS::EKS::Cluster",
+      "Properties": {
+        "Name": "market-intel-prod",
+        "Version": {
+          "Ref": "KubernetesVersion"
+        },
+        "RoleArn": {
+          "Fn::GetAtt": [
+            "ClusterRole",
+            "Arn"
+          ]
+        },
+        "BootstrapSelfManagedAddons": true,
+        "AccessConfig": {
+          "AuthenticationMode": "API_AND_CONFIG_MAP",
+          "BootstrapClusterCreatorAdminPermissions": false
+        },
+        "ResourcesVpcConfig": {
+          "SubnetIds": [
+            {
+              "Ref": "Private0"
+            },
+            {
+              "Ref": "Private1"
+            }
+          ],
+          "EndpointPrivateAccess": true,
+          "EndpointPublicAccess": true,
+          "PublicAccessCidrs": [
+            {
+              "Ref": "AdminCidr"
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "market-intel"
+          }
+        ],
+        "UpgradePolicy": {
+          "SupportType": "STANDARD"
+        },
+        "Logging": {
+          "ClusterLogging": {
+            "EnabledTypes": [
+              {
+                "Type": "api"
+              },
+              {
+                "Type": "audit"
+              },
+              {
+                "Type": "authenticator"
+              },
+              {
+                "Type": "controllerManager"
+              },
+              {
+                "Type": "scheduler"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "Nodes": {
+      "Type": "AWS::EKS::Nodegroup",
+      "Properties": {
+        "ClusterName": {
+          "Ref": "Cluster"
+        },
+        "NodegroupName": "applications",
+        "NodeRole": {
+          "Fn::GetAtt": [
+            "NodeRole",
+            "Arn"
+          ]
+        },
+        "Subnets": [
+          {
+            "Ref": "Private0"
+          },
+          {
+            "Ref": "Private1"
+          }
+        ],
+        "InstanceTypes": [
+          {
+            "Ref": "NodeInstanceType"
+          }
+        ],
+        "AmiType": "AL2023_x86_64_STANDARD",
+        "ScalingConfig": {
+          "DesiredSize": 2,
+          "MinSize": 2,
+          "MaxSize": 3
+        },
+        "Tags": {
+          "Project": "market-intel"
+        },
+        "LaunchTemplate": {
+          "Id": {
+            "Ref": "NodeLaunchTemplate"
+          },
+          "Version": {
+            "Fn::GetAtt": [
+              "NodeLaunchTemplate",
+              "LatestVersionNumber"
+            ]
+          }
+        },
+        "UpdateConfig": {
+          "MaxUnavailable": 1
+        }
+      },
+      "DependsOn": [
+        "NatRoute",
+        "PrivateAssoc0",
+        "PrivateAssoc1"
+      ]
+    },
+    "OperatorAccess": {
+      "Type": "AWS::EKS::AccessEntry",
+      "Properties": {
+        "ClusterName": {
+          "Ref": "Cluster"
+        },
+        "PrincipalArn": "arn:aws:iam::521595303406:user/Agent",
+        "Type": "STANDARD",
+        "AccessPolicies": [
+          {
+            "PolicyArn": "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy",
+            "AccessScope": {
+              "Type": "cluster"
+            }
+          }
+        ]
+      }
+    },
+    "NodeLaunchTemplate": {
+      "Type": "AWS::EC2::LaunchTemplate",
+      "Properties": {
+        "LaunchTemplateData": {
+          "MetadataOptions": {
+            "HttpEndpoint": "enabled",
+            "HttpTokens": "required",
+            "HttpPutResponseHopLimit": 1
+          },
+          "CreditSpecification": {
+            "CpuCredits": "standard"
+          },
+          "BlockDeviceMappings": [
+            {
+              "DeviceName": "/dev/xvda",
+              "Ebs": {
+                "VolumeType": "gp3",
+                "VolumeSize": 30,
+                "Encrypted": true,
+                "DeleteOnTermination": true
+              }
+            }
+          ]
+        }
+      }
+    },
+    "PodIdentityAgent": {
+      "Type": "AWS::EKS::Addon",
+      "DependsOn": "Nodes",
+      "Properties": {
+        "ClusterName": {
+          "Ref": "Cluster"
+        },
+        "AddonName": "eks-pod-identity-agent"
+      }
+    },
+    "CniRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "pods.eks.amazonaws.com"
+              },
+              "Action": [
+                "sts:AssumeRole",
+                "sts:TagSession"
+              ],
+              "Condition": {
+                "StringEquals": {
+                  "aws:RequestTag/eks-cluster-name": {
+                    "Ref": "Cluster"
+                  },
+                  "aws:RequestTag/kubernetes-namespace": "kube-system",
+                  "aws:RequestTag/kubernetes-service-account": "aws-node"
+                }
+              }
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+        ],
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "market-intel"
+          }
+        ]
+      }
+    },
+    "VpcCni": {
+      "Type": "AWS::EKS::Addon",
+      "DependsOn": "PodIdentityAgent",
+      "Properties": {
+        "ClusterName": {
+          "Ref": "Cluster"
+        },
+        "AddonName": "vpc-cni",
+        "ResolveConflicts": "OVERWRITE",
+        "PodIdentityAssociations": [
+          {
+            "ServiceAccount": "aws-node",
+            "RoleArn": {
+              "Fn::GetAtt": [
+                "CniRole",
+                "Arn"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "ClusterName": {
+      "Value": {
+        "Ref": "Cluster"
+      }
+    },
+    "VpcId": {
+      "Value": {
+        "Ref": "Vpc"
+      }
+    },
+    "NodeRoleArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "NodeRole",
+          "Arn"
+        ]
+      }
+    },
+    "PrivateSubnets": {
+      "Value": {
+        "Fn::Join": [
+          ",",
+          [
+            {
+              "Ref": "Private0"
+            },
+            {
+              "Ref": "Private1"
+            }
+          ]
+        ]
+      }
+    },
+    "CniRoleArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "CniRole",
+          "Arn"
+        ]
+      }
+    }
+  },
+  "Parameters": {
+    "AdminCidr": {
+      "Type": "String",
+      "Description": "Operator public IPv4 /32; API also available inside VPC",
+      "AllowedPattern": "(\\d{1,3}\\.){3}\\d{1,3}/32"
+    },
+    "KubernetesVersion": {
+      "Type": "String",
+      "Default": "1.36",
+      "AllowedValues": [
+        "1.36"
+      ]
+    },
+    "NodeInstanceType": {
+      "Type": "String",
+      "Default": "t3a.large",
+      "AllowedValues": [
+        "t3a.medium",
+        "t3a.large"
+      ]
+    },
+    "BootstrapNodeCniPolicy": {
+      "Type": "String",
+      "Default": "true",
+      "AllowedValues": [
+        "true",
+        "false"
+      ],
+      "Description": "Temporary node CNI permission during bootstrap; set false only after the managed VPC CNI uses its active Pod Identity role."
+    }
+  },
+  "Conditions": {
+    "AttachNodeCniPolicy": {
+      "Fn::Equals": [
+        {
+          "Ref": "BootstrapNodeCniPolicy"
+        },
+        "true"
+      ]
+    }
+  }
+}

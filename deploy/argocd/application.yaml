@@ -16,9 +16,24 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: market-intel
+  ignoreDifferences:
+    - group: ''
+      kind: Service
+      name: market-api
+      jsonPointers: [/spec/selector/rollouts-pod-template-hash]
+    - group: ''
+      kind: Service
+      name: market-api-canary
+      jsonPointers: [/spec/selector/rollouts-pod-template-hash]
+    - group: networking.k8s.io
+      kind: Ingress
+      name: market-api-canary
+      jqPathExpressions:
+        - '.metadata.annotations["alb.ingress.kubernetes.io/actions.market-api-root"]'
   syncPolicy:
     automated:
       prune: false
       selfHeal: true
     syncOptions:
       - PruneLast=true
+      - RespectIgnoreDifferences=true

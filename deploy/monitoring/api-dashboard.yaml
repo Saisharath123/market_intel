@@ -8,24 +8,237 @@ metadata:
 data:
   market-intel.json: |
     {
-      "uid": "market-intel-apis", "title": "Market Intel APIs", "schemaVersion": 39,
-      "version": 1, "refresh": "30s", "time": {"from": "now-1h", "to": "now"},
+      "uid": "market-intel-apis",
+      "title": "Market Intel - Release and API Health",
+      "description": "Compare staging and production. Inspect provider status and exchange timestamps separately: HTTP health does not establish quote freshness. Absent series can mean no requests yet.",
+      "schemaVersion": 39,
+      "version": 2,
+      "refresh": "30s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "namespace",
+            "label": "Environment",
+            "type": "custom",
+            "query": "market-intel,market-intel-staging",
+            "multi": false,
+            "includeAll": false,
+            "current": {
+              "text": "market-intel",
+              "value": "market-intel"
+            },
+            "options": [
+              {
+                "text": "market-intel",
+                "value": "market-intel",
+                "selected": true
+              },
+              {
+                "text": "market-intel-staging",
+                "value": "market-intel-staging",
+                "selected": false
+              }
+            ]
+          }
+        ]
+      },
       "panels": [
-        {"id": 1, "type": "timeseries", "title": "Requests per second",
-         "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
-         "datasource": {"type": "prometheus", "uid": "prometheus"},
-         "targets": [{"expr": "sum by (service) (rate(market_intel_http_requests_total[5m]))", "legendFormat": "{{service}}"}]},
-        {"id": 2, "type": "timeseries", "title": "Server errors per second",
-         "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
-         "datasource": {"type": "prometheus", "uid": "prometheus"},
-         "targets": [{"expr": "sum by (service) (rate(market_intel_http_requests_total{status=~\"5..\"}[5m]))", "legendFormat": "{{service}}"}]},
-        {"id": 3, "type": "timeseries", "title": "p95 API latency (seconds)",
-         "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
-         "datasource": {"type": "prometheus", "uid": "prometheus"},
-         "targets": [{"expr": "histogram_quantile(0.95, sum by (le,service) (rate(market_intel_http_request_seconds_bucket[5m])))", "legendFormat": "{{service}}"}]},
-        {"id": 4, "type": "timeseries", "title": "Available service replicas",
-         "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
-         "datasource": {"type": "prometheus", "uid": "prometheus"},
-         "targets": [{"expr": "kube_deployment_status_replicas_available{namespace=\"market-intel\"}", "legendFormat": "{{deployment}}"}]}
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Requests per second",
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum by (service) (rate(market_intel_http_requests_total{namespace=\"$namespace\"}[5m]))",
+              "legendFormat": "{{service}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "HTTP 5xx ratio",
+          "gridPos": {
+            "x": 12,
+            "y": 0,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum by (service) (rate(market_intel_http_requests_total{namespace=\"$namespace\",status=~\"5..\"}[5m])) / clamp_min(sum by (service) (rate(market_intel_http_requests_total{namespace=\"$namespace\"}[5m])), 0.001)",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "description": "Provider failures returned as HTTP 200 domain statuses are not HTTP errors. No 5xx series can mean no errors yet."
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "p95 API latency",
+          "gridPos": {
+            "x": 0,
+            "y": 8,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (le,service) (rate(market_intel_http_request_seconds_bucket{namespace=\"$namespace\"}[5m])))",
+              "legendFormat": "{{service}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "API scrape targets up",
+          "gridPos": {
+            "x": 12,
+            "y": 8,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "up{namespace=\"$namespace\"}",
+              "legendFormat": "{{job}} / {{pod}}"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Ready application pods",
+          "gridPos": {
+            "x": 0,
+            "y": 16,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum(kube_pod_status_ready{namespace=\"$namespace\",condition=\"true\"})",
+              "legendFormat": "Ready pods"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Container restarts in 15 minutes",
+          "gridPos": {
+            "x": 12,
+            "y": 16,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum by (container) (increase(kube_pod_container_status_restarts_total{namespace=\"$namespace\"}[15m]))",
+              "legendFormat": "{{container}}"
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Container working memory",
+          "gridPos": {
+            "x": 0,
+            "y": 24,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum by (container) (container_memory_working_set_bytes{namespace=\"$namespace\",container!=\"\",container!=\"POD\"})",
+              "legendFormat": "{{container}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "Container CPU cores",
+          "gridPos": {
+            "x": 12,
+            "y": 24,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum by (container) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\",container!=\"\",container!=\"POD\"}[5m]))",
+              "legendFormat": "{{container}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "cores"
+            },
+            "overrides": []
+          }
+        }
       ]
     }

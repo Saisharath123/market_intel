@@ -1,0 +1,48 @@
+{{- if .Values.rollouts.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: market-api-canary-quality
+spec:
+  args:
+    - name: canary-hash
+  metrics:
+    - name: sufficient-canary-requests
+      interval: 30s
+      count: 3
+      failureLimit: 0
+      consecutiveErrorLimit: 1
+      successCondition: len(result) == 1 && !isNaN(result[0]) && result[0] >= {{ .Values.rollouts.minimumRequests }}
+      provider:
+        prometheus:
+          address: {{ .Values.rollouts.prometheusAddress | quote }}
+          timeout: 10
+          query: |
+            sum(increase(market_intel_http_requests_total{namespace="{{ .Release.Namespace }}",service="market",route="/api/v1/quotes",rollouts_pod_template_hash="{{ "{{args.canary-hash}}" }}"}[2m])) or vector(0)
+    - name: canary-server-error-ratio
+      interval: 30s
+      count: 3
+      failureLimit: 0
+      consecutiveErrorLimit: 1
+      successCondition: len(result) == 1 && !isNaN(result[0]) && result[0] >= 0 && result[0] <= {{ .Values.rollouts.maximumErrorRatio }}
+      provider:
+        prometheus:
+          address: {{ .Values.rollouts.prometheusAddress | quote }}
+          timeout: 10
+          query: |
+            (sum(rate(market_intel_http_requests_total{namespace="{{ .Release.Namespace }}",service="market",route="/api/v1/quotes",status=~"5..",rollouts_pod_template_hash="{{ "{{args.canary-hash}}" }}"}[2m])) or vector(0))
+            /
+            sum(rate(market_intel_http_requests_total{namespace="{{ .Release.Namespace }}",service="market",route="/api/v1/quotes",rollouts_pod_template_hash="{{ "{{args.canary-hash}}" }}"}[2m]))
+    - name: canary-p95-seconds
+      interval: 30s
+      count: 3
+      failureLimit: 0
+      consecutiveErrorLimit: 1
+      successCondition: len(result) == 1 && !isNaN(result[0]) && result[0] >= 0 && result[0] < {{ .Values.rollouts.maximumP95Seconds }}
+      provider:
+        prometheus:
+          address: {{ .Values.rollouts.prometheusAddress | quote }}
+          timeout: 10
+          query: |
+            histogram_quantile(0.95, sum by (le) (rate(market_intel_http_request_seconds_bucket{namespace="{{ .Release.Namespace }}",service="market",route="/api/v1/quotes",rollouts_pod_template_hash="{{ "{{args.canary-hash}}" }}"}[2m])))
+{{- end }}

@@ -2,8 +2,11 @@ import pandas as pd
 import streamlit as st
 from market.client import news, quotes
 from market.service import insights
+from market.telemetry import configure_telemetry
 
-st.set_page_config(page_title='India Market Pulse', page_icon='📈', layout='wide')
+configure_telemetry('market-intel-dashboard')
+
+st.set_page_config(page_title='India Market Pulse', page_icon='ðŸ“ˆ', layout='wide')
 st.title('India Market Pulse')
 st.caption('Indian indices, a small stock watchlist, and market headlines')
 st.sidebar.header('MVP controls')
@@ -18,26 +21,26 @@ st.sidebar.caption('Read-only dashboard. No trading or account access.')
 def dashboard():
     snapshot = quotes()
     if snapshot['mode'] == 'demo':
-        st.warning('DEMO QUOTES — fixed synthetic values, not current market prices.')
+        st.warning('DEMO QUOTES â€” fixed synthetic values, not current market prices.')
     elif snapshot['mode'] == 'yahoo':
-        st.info('Actual market prices from Yahoo Finance · may be delayed · refreshes every five minutes · no API key required.')
+        st.info('Actual market prices from Yahoo Finance Â· may be delayed Â· refreshes every five minutes Â· no API key required.')
     if snapshot['error']:
         st.error(snapshot['error'])
-    st.caption(f"Quote source: {snapshot['source']} · Status: {snapshot['status']} · Fetched (UTC): {snapshot['fetched_at']}")
+    st.caption(f"Quote source: {snapshot['source']} Â· Status: {snapshot['status']} Â· Fetched (UTC): {snapshot['fetched_at']}")
     st.caption('Fetched time is not exchange quote time. Prices may be delayed or from the previous session; see quote_time below.')
     items = snapshot['items']
     if items:
         cols = st.columns(3)
         for i, item in enumerate(items):
             delta = item['change_pct']
-            cols[i % 3].metric(item['symbol'].split(':')[1], f"₹{item['price']:,.2f}",
+            cols[i % 3].metric(item['symbol'].split(':')[1], f"â‚¹{item['price']:,.2f}",
                                f'{delta:+.2f}%' if delta is not None else None,
-                               help=f"Quote time: {item.get('quote_time') or 'unavailable'} · Change vs previous trading-session close")
+                               help=f"Quote time: {item.get('quote_time') or 'unavailable'} Â· Change vs previous trading-session close")
         if snapshot.get('missing_symbols'):
             st.warning('Missing quotes: ' + ', '.join(snapshot['missing_symbols']))
         st.subheader('Watchlist insights')
         summary = insights(snapshot)
-        st.write(f"{summary['advances']} advancing · {summary['declines']} declining · {summary['unchanged']} unchanged")
+        st.write(f"{summary['advances']} advancing Â· {summary['declines']} declining Â· {summary['unchanged']} unchanged")
         st.caption(summary['scope'])
         frame = pd.DataFrame(summary['leaders'])
         if not frame.empty:
@@ -48,9 +51,9 @@ def dashboard():
         st.info('No quotes available. Headlines can still load independently.')
     st.subheader('Market headlines')
     headlines = news()
-    st.caption(f"Source: {headlines['source']} · Status: {headlines['status']} · Fetched (UTC): {headlines['fetched_at']}")
+    st.caption(f"Source: {headlines['source']} Â· Status: {headlines['status']} Â· Fetched (UTC): {headlines['fetched_at']}")
     if headlines['mode'] == 'demo':
-        st.info('DEMO NEWS — synthetic headline for UI preview.')
+        st.info('DEMO NEWS â€” synthetic headline for UI preview.')
     if headlines['error']:
         st.error(headlines['error'])
     query = st.text_input('Filter headlines', placeholder='Company or keyword')
@@ -58,7 +61,7 @@ def dashboard():
         if query.casefold() not in item['title'].casefold():
             continue
         st.text(item['title'])
-        st.caption(f"{item['source']} · {item['published_at'] or 'No publication timestamp'}")
+        st.caption(f"{item['source']} Â· {item['published_at'] or 'No publication timestamp'}")
         if item['url']:
             st.link_button('Read at source', item['url'])
 
