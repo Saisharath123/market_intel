@@ -4,15 +4,15 @@ requireImageDigest: true
 services:
   dashboard:
     replicas: 1
-    image: ''
+    image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/dashboard@sha256:b283ecc2f498f0c42989b2c7744dc5285b950f271b897733de8cc00720873d98"
   market-api:
     replicas: 1
-    image: ''
+    image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/market@sha256:93fa837672b68f24f97a792d7d911c7e79bf7a09b5f703bb41a6e51461f1f3f6"
     env:
       MARKET_MODE: demo
   news-api:
     replicas: 1
-    image: ''
+    image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/news@sha256:03714b3bc1b3ac11303dd9b838fbfa495d042ec59ce7b5bcddf1ba52d76709ea"
     env:
       NEWS_MODE: demo
 monitoring:
