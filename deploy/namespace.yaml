@@ -3,6 +3,7 @@ kind: Namespace
 metadata:
   name: market-intel
   labels:
+    elbv2.k8s.aws/pod-readiness-gate-inject: enabled
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: v1.36
     pod-security.kubernetes.io/audit: restricted

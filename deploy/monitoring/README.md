@@ -4,7 +4,9 @@ This directory contains curated configuration for a new install; it does not rep
 
 Pinned chart: `prometheus-community/kube-prometheus-stack` **92.11.0** (Prometheus Operator app version **v0.94.1**). Its metadata supports Kubernetes `>=1.25.0-0`; compatibility of the entire running stack still needs rollout checks. Bundled chart dependencies include kube-state-metrics 8.6.0, prometheus-node-exporter 4.60.0 and Grafana 14.0.1. Upgrade those through a reviewed chart release rather than editing live Pods.
 
-Run from the repository root in an authenticated operator terminal:
+The preferred `infra/provision.py controllers-bootstrap --execute` path creates the strong Grafana administrator Secret and installs monitoring before Rollouts' ServiceMonitor. The manual Helm commands below assume the owned `monitoring/market-intel-grafana-admin` Secret already exists with `admin-user` and `admin-password` keys; do not substitute a known default password.
+
+Run from the repository root in an authenticated `agent` operator terminal with the isolated kubeconfig/context from [operations](../../docs/OPERATIONS.md):
 
 ```powershell
 kubectl apply -f deploy/monitoring/storage-class.yaml

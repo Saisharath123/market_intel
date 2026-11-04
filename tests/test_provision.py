@@ -148,3 +148,44 @@ def test_cf_cni_parameter_preserves_managed_ownership():
     template = json.loads((provision.ROOT / 'infra/cloudformation/eks.json').read_text())
     assert template['Parameters']['BootstrapNodeCniPolicy']['Default'] == 'true'
     assert template['Resources']['NodeRole']['Properties']['ManagedPolicyArns'][-1]['Fn::If'][0] == 'AttachNodeCniPolicy'
+
+
+def test_rollouts_values_are_installed_after_monitoring_crds(tmp_path, monkeypatch):
+    op = operator(tmp_path)
+    operations = []
+    monkeypatch.setattr(op, 'install_chart', lambda release, **kwargs: operations.append((release, kwargs)))
+    monkeypatch.setattr(op, 'kubectl_run', lambda *parts, **kwargs: operations.append(('kubectl', parts)) or '')
+    op.controllers_bootstrap()
+    monitor = next(i for i, item in enumerate(operations) if item[0] == 'monitoring')
+    rollouts = next(i for i, item in enumerate(operations) if item[0] == 'argo-rollouts')
+    established = next(i for i, item in enumerate(operations)
+                       if item[0] == 'kubectl' and 'crd/servicemonitors.monitoring.coreos.com' in item[1])
+    assert monitor < established < rollouts
+    assert operations[rollouts][1]['values'] == 'deploy/rollouts/controller-values.yaml'
+
+
+def test_new_grafana_password_uses_stdin_and_is_never_logged(tmp_path, monkeypatch, capsys):
+    op = operator(tmp_path, '--execute')
+    calls = []
+    def kubectl(*parts, **kwargs):
+        calls.append((parts, kwargs))
+        return ''
+    monkeypatch.setattr(op, 'kubectl_run', kubectl)
+    monkeypatch.setattr(provision.secrets, 'token_urlsafe', lambda size: 'private-random-password')
+    op.ensure_grafana_admin()
+    created = json.loads(calls[-1][1]['data'])
+    assert calls[-1][0] == ('create', '-f', '-')
+    assert created['stringData']['admin-password'] == 'private-random-password'
+    assert 'private-random-password' not in capsys.readouterr().out
+
+
+def test_owned_grafana_credentials_are_preserved_on_rerun(tmp_path, monkeypatch):
+    op = operator(tmp_path, '--execute')
+    current = {'metadata': {'labels': {'app.kubernetes.io/part-of': 'market-intel',
+                                       'app.kubernetes.io/managed-by': 'market-intel-provision'}},
+               'data': {'admin-user': 'YWRtaW4=', 'admin-password': 'bm90LWEtcmVhbC1wYXNzd29yZA=='}}
+    def kubectl(*parts, **kwargs):
+        assert parts[2] == 'get'
+        return json.dumps(current)
+    monkeypatch.setattr(op, 'kubectl_run', kubectl)
+    op.ensure_grafana_admin()

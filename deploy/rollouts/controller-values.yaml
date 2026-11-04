@@ -1,5 +1,6 @@
 # Verified against argo/argo-rollouts chart 2.43.8, application v1.10.1.
-# Root bootstrap supplies serviceAccount.annotations.eks.amazonaws.com/role-arn.
+# CloudFormation associates this service account through EKS Pod Identity.
+# No IRSA role annotation or static AWS credential is required.
 controller:
   replicas: 1
   awsVerifyTargetGroup: true

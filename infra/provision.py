@@ -23,6 +23,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shlex
 import shutil
 import subprocess
@@ -408,12 +409,39 @@ class Provisioner:
 
     def namespace(self, name, *, restricted=False):
         labels = {'app.kubernetes.io/part-of': 'market-intel'}
+        if name == 'market-intel':
+            # Admission injects ALB target readiness gates only for Pods created
+            # after the namespace has this label and eligible targets exist.
+            labels['elbv2.k8s.aws/pod-readiness-gate-inject'] = 'enabled'
         if restricted:
             labels.update({'pod-security.kubernetes.io/enforce': 'restricted',
                            'pod-security.kubernetes.io/enforce-version': 'v' + VERSION,
                            'pod-security.kubernetes.io/audit': 'restricted', 'pod-security.kubernetes.io/warn': 'restricted'})
         document = {'apiVersion': 'v1', 'kind': 'Namespace', 'metadata': {'name': name, 'labels': labels}}
         self.kubectl_run('apply', '-f', '-', write=True, data=json.dumps(document))
+
+    def ensure_grafana_admin(self):
+        """Generate once in-cluster; never expose credentials in argv, logs or files."""
+        name = 'market-intel-grafana-admin'
+        if not self.execute:
+            print(f'PLAN create/reuse strong Grafana admin Secret monitoring/{name}; credentials are never logged.')
+            return
+        raw = self.kubectl_run('-n', 'monitoring', 'get', 'secret', name, '-o', 'json', '--ignore-not-found')
+        ownership = {'app.kubernetes.io/part-of': 'market-intel',
+                     'app.kubernetes.io/managed-by': 'market-intel-provision'}
+        if raw.strip():
+            current = json.loads(raw)
+            labels = current.get('metadata', {}).get('labels', {})
+            if any(labels.get(key) != value for key, value in ownership.items()):
+                raise ProvisionError('Refusing to reuse the Grafana administrator Secret: ownership labels do not match.')
+            if not all(current.get('data', {}).get(key) for key in ('admin-user', 'admin-password')):
+                raise ProvisionError('The owned Grafana administrator Secret is missing its required keys.')
+            print('Owned Grafana administrator Secret already exists; preserving its credentials.', flush=True)
+            return
+        document = {'apiVersion': 'v1', 'kind': 'Secret', 'type': 'Opaque',
+                    'metadata': {'name': name, 'namespace': 'monitoring', 'labels': ownership},
+                    'stringData': {'admin-user': 'admin', 'admin-password': secrets.token_urlsafe(32)}}
+        self.kubectl_run('create', '-f', '-', write=True, data=json.dumps(document))
 
     def controllers_bootstrap(self):
         outputs = self.connect()
@@ -424,14 +452,19 @@ class Provisioner:
         self.install_chart('aws-load-balancer-controller', settings=(
             f'clusterName={CLUSTER}', f'region={REGION}', f'vpcId={outputs["VpcId"]}',
             'serviceAccount.create=true', 'serviceAccount.name=aws-load-balancer-controller'))
-        self.install_chart('argo-rollouts', settings=('serviceAccount.create=true',
-                                                     'serviceAccount.name=argo-rollouts',
-                                                     'dashboard.enabled=false'))
         self.install_chart('argocd', values='deploy/argocd/values.yaml')
         self.namespace('market-intel', restricted=True)
         self.namespace('market-intel-staging', restricted=True)
+        self.namespace('monitoring')
         self.kubectl_run('apply', '-f', ROOT / 'deploy/monitoring/storage-class.yaml', write=True)
+        self.ensure_grafana_admin()
         self.install_chart('monitoring', values='deploy/monitoring/values.yaml')
+        # Rollouts' pinned values create a ServiceMonitor; the CRD must exist
+        # before Helm submits that custom resource to the API server.
+        self.kubectl_run('wait', '--for=condition=Established',
+                         'crd/servicemonitors.monitoring.coreos.com', 'crd/prometheusrules.monitoring.coreos.com',
+                         '--timeout=2m', write=not self.execute, timeout=180)
+        self.install_chart('argo-rollouts', values='deploy/rollouts/controller-values.yaml')
         self.kubectl_run('apply', '-f', ROOT / 'deploy/monitoring/api-dashboard.yaml', write=True)
         print('Bootstrap complete/planned. Application rollout requires approved Git image digests.', flush=True)
 

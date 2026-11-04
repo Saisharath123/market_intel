@@ -12,7 +12,7 @@ Rates were read from the AWS Price List API for Mumbai on November 4, 2026. The 
 | 87 GiB gp3: 2 x 30 GiB roots + 27 GiB monitoring | $0.0912/GB-month | $7.93 |
 | **Fixed estimate** | | **$214.89/month** |
 
-This is about $7.06 per 24 running hours at the listed rates. If worker roots are 40 GiB each, the fixed estimate becomes approximately $216.71/month. NAT data processing adds $0.056/GB and ALB usage adds $0.008 per LCU-hour. Cross-zone/internet transfer, ECR storage/scanning, CloudWatch usage, extra volumes/snapshots/IP addresses, T3 surplus CPU credits, taxes, support and optional external Sonar services are excluded. Cluster/node upgrades can temporarily add replacement capacity.
+This is about $7.06 per 24 running hours at the listed rates. If worker roots are 40 GiB each, the fixed estimate becomes approximately $216.71/month. NAT data processing adds $0.056/GB and ALB usage adds $0.008 per LCU-hour. Cross-zone/internet transfer, ECR storage/scanning, CloudWatch usage, extra volumes/snapshots/IP addresses, taxes, support and optional external Sonar services are excluded. Cluster/node upgrades can temporarily add replacement capacity. The supplied T3a launch template uses standard CPU credits: sustained CPU can throttle after credits are exhausted rather than incur unlimited-mode surplus charges.
 
 The internal ALB does not require public frontend IPv4 addresses. A future internet-facing ALB, Client VPN, extra NAT gateway or access bridge changes this estimate. The prior Client VPN/private DNS setup is not part of this baseline.
 
