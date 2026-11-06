@@ -96,6 +96,14 @@ def main():
         api('users/change_password', 'admin', 'admin',
             fields={'login': 'admin', 'previousPassword': 'admin', 'password': password})
     api('settings/set', 'admin', password, fields={'key': 'sonar.forceAuthentication', 'value': 'true'})
+    # The built-in sonar-users group always contains every authenticated user;
+    # its membership cannot be narrowed. Remove the default global analysis
+    # and project-creation grants on this dedicated instance instead. Otherwise
+    # the scanner account would inherit broader rights than its direct grants.
+    for group in ('sonar-users', 'Anyone'):
+        for permission in ('scan', 'provisioning'):
+            api('permissions/remove_group', 'admin', password,
+                fields={'groupName': group, 'permission': permission})
     projects = api('projects/search?projects=' + PROJECT, 'admin', password).get('components', [])
     if not projects:
         api('projects/create', 'admin', password,
@@ -105,7 +113,9 @@ def main():
     api('projects/update_visibility', 'admin', password, fields={'project': PROJECT, 'visibility': 'private'})
     # A dedicated local scanner account gets only this project's analysis/browse
     # permissions; its random login password is not retained after token issuance.
-    scanner_password = secrets.token_urlsafe(48)
+    # Sonar 2026.6+ requires all four character categories. Entropy is supplied
+    # by the random suffix; the prefix guarantees this cannot fail randomly.
+    scanner_password = 'Aa9!' + secrets.token_urlsafe(48)
     users = api('users/search?q=' + SCANNER_USER, 'admin', password).get('users', [])
     if any(user.get('login') == SCANNER_USER for user in users):
         api('users/change_password', 'admin', password,

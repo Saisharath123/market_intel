@@ -12,6 +12,9 @@ environment: production
 requireImageDigest: true
 smokeTest:
   enabled: true
+  # Initial ALB provisioning/private DNS propagation may overlap the PostSync hook.
+  attempts: 60
+  activeDeadlineSeconds: 600
 rollouts:
   enabled: true
   routeDashboardThroughAlb: true

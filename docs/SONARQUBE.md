@@ -85,7 +85,10 @@ python infra/sonarqube-configure.py `
 The helper reads the generated administrator password from its dedicated AWS
 Secret and changes Sonar's default password. It creates the private
 `market-intel` project, a separate scanner account with project analysis/browse
-permission, and a 90-day **project analysis token**. It writes the token directly
+permission, and a 90-day **project analysis token**. It removes the default global
+analysis/project-creation grants from `sonar-users` and `Anyone` on this dedicated
+instance; the built-in `sonar-users` membership itself cannot be narrowed.
+Administrator permissions remain with `sonar-administrators`. It writes the token directly
 to the GitHub `SONAR_TOKEN` secret through stdin. No credential is printed,
 written into Git, passed as a command-line argument, or retained as an artifact.
 The helper reuses the local saved GitHub login without writing another token.

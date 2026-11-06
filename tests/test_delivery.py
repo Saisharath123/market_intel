@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 import pytest
 import yaml
@@ -49,6 +50,28 @@ def test_production_smoke_rejects_accidental_demo_fallback():
         smoke.check_snapshot(snapshot('demo', [{'symbol': 'NSE:TCS', 'price': 10}]), False, 'yahoo')
 
 
+def test_smoke_waits_through_bootstrap_dns_failure(monkeypatch):
+    calls = []
+
+    def check_services(*args):
+        calls.append(args)
+        if len(calls) < 3:
+            raise OSError('Private ALB DNS record is not available yet')
+
+    monkeypatch.setattr(smoke, 'check_services', check_services)
+    monkeypatch.setattr(smoke.time, 'sleep', lambda _: None)
+    monkeypatch.setattr(sys, 'argv', ['smoke.py', '--attempts', '3'])
+    smoke.main()
+    assert len(calls) == 3
+
+
+def test_smoke_never_succeeds_without_an_attempt(monkeypatch):
+    monkeypatch.setattr(sys, 'argv', ['smoke.py', '--attempts', '0'])
+    with pytest.raises(SystemExit) as error:
+        smoke.main()
+    assert error.value.code == 2
+
+
 def render(environment, *settings):
     if not HELM:
         pytest.skip('Helm is required for chart rendering; set HELM_PATH or install helm')
@@ -81,6 +104,8 @@ def test_website_and_smoke_share_environment_route(environment, expected_url, ma
     assert args[args.index('--market-traffic-url') + 1] == expected_url
     assert args[args.index('--market-mode') + 1] == market_mode
     assert ('--expect-demo' in args) == (environment == 'staging')
+    assert args[args.index('--attempts') + 1] == ('60' if environment == 'production' else '6')
+    assert job['spec']['activeDeadlineSeconds'] == (600 if environment == 'production' else 180)
 
 
 @pytest.mark.parametrize('hostname', ['', 'https://wrong.example/path'])

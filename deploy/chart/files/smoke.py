@@ -71,6 +71,8 @@ def main():
     parser.add_argument('--expect-demo', action='store_true')
     parser.add_argument('--attempts', type=int, default=6)
     args = parser.parse_args()
+    if args.attempts < 1:
+        parser.error('--attempts must be positive; every smoke run must check services')
     for attempt in range(args.attempts):
         try:
             check_services(args.market_url, args.news_url, args.dashboard_url, args.expect_demo,

@@ -36,6 +36,8 @@ environment: local
 requireImageDigest: false
 smokeTest:
   enabled: false
+  attempts: 6
+  activeDeadlineSeconds: 180
 rollouts:
   enabled: false
   routeDashboardThroughAlb: false

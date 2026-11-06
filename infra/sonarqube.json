@@ -276,7 +276,8 @@
           "SecretStringTemplate": "{\"username\":\"admin\"}",
           "GenerateStringKey": "password",
           "PasswordLength": 48,
-          "ExcludePunctuation": true
+          "ExcludePunctuation": false,
+          "RequireEachIncludedType": true
         },
         "Tags": [
           {
