@@ -3,9 +3,10 @@
 Production uses a focused canary for `market-api`. Dashboard and news keep normal
 rolling deployments. An internal AWS ALB sends `/api/v1` traffic to stable and
 canary target groups at 10%, 50%, then 100%. The dashboard's internal
-`http://market-api:8000` calls deliberately stay on the stable version until the
-canary is promoted. Demonstrate weighted traffic through the ALB, not through a
-port-forward to the stable Service.
+market calls use `http://api.market-intel.internal`, a private CNAME for the
+weighted ALB. Real dashboard requests and the bounded load job therefore follow
+the same canary weights. The `market-api` and `market-api-canary` Services remain
+the stable/canary backing targets. Staging keeps its direct service URL.
 
 Prerequisites, installed by the cluster bootstrap:
 
@@ -18,6 +19,12 @@ Prerequisites, installed by the cluster bootstrap:
   `rollouts_pod_template_hash` label and preserves the application's `service`
   label with `honorLabels: true`.
 - `rollouts.enabled: true`, `monitoring.enabled: true` in production values.
+- `rollouts.routeDashboardThroughAlb: true` and `rollouts.apiHostname` set to the
+  private API DNS name. The bootstrap owns the private DNS zone, waits for the
+  Ingress ALB address and updates this CNAME before waiting for application
+  health. On cluster recreation, refresh the CNAME to the new ALB address.
+  Hostname values contain no scheme, path or port. Chart rendering rejects an
+  empty or malformed hostname when weighted dashboard routing is enabled.
 
 The ALB and two target groups cost money while provisioned. Its listener is
 HTTP inside the VPC. It is not a public HTTPS endpoint. Administrative services
@@ -27,8 +34,16 @@ remain ClusterIP and are reached through authenticated local port-forwards.
 
 The first deployment creates a stable revision; Argo Rollouts skips canary steps
 when no prior revision exists. A subsequent **different market image digest** is
-needed to exercise a canary. A dashboard-only change does not exercise this API
-rollout.
+needed to exercise a normal image-release canary. A dashboard-only change does
+not exercise this API rollout. The controlled abort drill below instead creates
+a new pod revision using the same tested image.
+
+Production also runs the PostSync functional hook. It checks the real provider
+modes, response contracts and fetch freshness, using the weighted API origin for
+quotes/insights and the direct Services for health/metrics. HTTP 200 with an
+unavailable/partial/stale payload or an accidental demo provider fails this
+hook. A failed PostSync hook marks the sync failed; it does not itself perform a
+canary abort or revert Git. Canary metric gates execute before full promotion.
 
 Start traffic before merging the production image promotion PR. Read the exact
 market image digest from the reviewed values file and use it as `--image`:
@@ -73,13 +88,24 @@ kubectl -n market-intel get analysisruns
 kubectl -n market-intel describe analysisrun <name>
 ```
 
-For a controlled failure drill, build a dedicated test branch whose market API
-returns HTTP 500 for the quote route while `/health` still succeeds. Send it
-through the ordinary CI, staging, and explicitly reviewed production promotion.
-Run the bounded traffic Job, retain the failed analysis and ALB-weight evidence,
-then revert the promotion PR. Do not push a deliberately broken release into a
-shared production environment. Record this drill as completed only after it has
-actually run.
+For a controlled drill in this portfolio lab, open a reviewed Git PR that sets
+`rollouts.abortDrillId: reviewed-lab-drill-<unique-id>` in production values. Run
+all ordinary PR checks. Keep every image digest unchanged. The nonempty ID adds
+a pod-template annotation, creating a new revision with the same healthy image,
+and adds an inline Prometheus gate whose `vector(0)` result deliberately fails
+the `result[0] == 1` condition. The normal 10% step and analysis failure therefore
+exercise automatic abort without introducing broken application code or
+bypassing CI/staging security checks. Never enable this drill in shared
+production; it intentionally blocks release progression.
+
+Start the bounded traffic job before merging this drill PR. Preserve the failed
+`controlled-abort-drill` measurement, the aborted Rollout and actual ALB
+stable/canary weights (100/0). Revert the drill PR through Git to restore the
+empty ID and original pod template, then verify successful reconciliation and
+functional smoke. A standalone failing AnalysisRun is insufficient evidence of
+a rollout abort. Record the drill as completed only after observing these
+outcomes. This validates abort wiring; it is distinct from the real error/latency
+query regression cases in `check-analysis.py`.
 
 ## Official references
 

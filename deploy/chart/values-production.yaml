@@ -10,5 +10,10 @@ monitoring:
 
 environment: production
 requireImageDigest: true
+smokeTest:
+  enabled: true
 rollouts:
   enabled: true
+  routeDashboardThroughAlb: true
+  # Bootstrap maintains the private CNAME to the weighted ALB ingress.
+  apiHostname: api.market-intel.internal

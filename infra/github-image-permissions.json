@@ -5,7 +5,7 @@
     {"Effect": "Allow", "Action": [
       "ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart",
       "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:DescribeImages", "ecr:BatchGetImage",
-      "ecr:DescribeImageScanFindings"
+      "ecr:DescribeImageScanFindings", "ecr:GetDownloadUrlForLayer"
     ], "Resource": [
       "arn:aws:ecr:ap-south-1:521595303406:repository/market-intel/dashboard",
       "arn:aws:ecr:ap-south-1:521595303406:repository/market-intel/market",

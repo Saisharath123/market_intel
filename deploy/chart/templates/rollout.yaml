@@ -21,6 +21,13 @@ spec:
       app: market-api
   template:
     metadata:
+      {{- if .Values.rollouts.abortDrillId }}
+      {{- if ne .Values.environment "production" }}
+      {{- fail "rollouts.abortDrillId is supported only in the production portfolio lab" }}
+      {{- end }}
+      annotations:
+        market-intel/abort-drill: {{ .Values.rollouts.abortDrillId | quote }}
+      {{- end }}
       labels:
         app: market-api
     spec:

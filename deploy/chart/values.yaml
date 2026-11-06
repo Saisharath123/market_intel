@@ -38,6 +38,10 @@ smokeTest:
   enabled: false
 rollouts:
   enabled: false
+  routeDashboardThroughAlb: false
+  apiHostname: ''
+  # Nonempty only for an explicitly reviewed abort drill in this portfolio lab.
+  abortDrillId: ''
   prometheusAddress: http://monitoring-kube-prometheus-prometheus.monitoring.svc:9090
   warmupSeconds: 120
   minimumRequests: 20

@@ -40,7 +40,7 @@ CLUSTER = 'market-intel-prod'
 CONTEXT = 'market-intel-sre'
 VERSION = '1.36'
 TAGS = {'Project': 'market-intel', 'ManagedBy': 'market-intel-provision'}
-STACKS = {name: f'market-intel-sre-{name}' for name in ('eks', 'ci', 'controllers')}
+STACKS = {name: f'market-intel-sre-{name}' for name in ('eks', 'ci', 'controllers', 'routing', 'sonarqube')}
 ECR_REPOS = {'dashboard': 'market-intel/dashboard', 'market-api': 'market-intel/market',
              'news-api': 'market-intel/news'}
 CHARTS = {
@@ -213,7 +213,7 @@ class Provisioner:
 
     def upsert_stack(self, kind, parameters):
         name = STACKS[kind]
-        template = ROOT / 'infra' / 'cloudformation' / f'{kind}.json'
+        template = ROOT / 'infra' / 'sonarqube.json' if kind == 'sonarqube' else ROOT / 'infra' / 'cloudformation' / f'{kind}.json'
         json.loads(template.read_text(encoding='utf-8-sig'))
         if not self.execute:
             print(f'PLAN create/update ownership-tagged {name} from {template.relative_to(ROOT)}')
@@ -341,6 +341,25 @@ class Provisioner:
     def kubectl_run(self, *parts, write=False, data=None, timeout=120):
         return self.run([self.kubectl, '--kubeconfig', self.kubeconfig, '--context', CONTEXT, *parts],
                         write=write, data=data, timeout=timeout)
+
+    def sonarqube(self):
+        if not self.execute:
+            print('PLAN create private SonarQube Community Build and PostgreSQL on one dedicated t3a.large host.')
+            print('PLAN reuse the owned EKS VPC/private subnet/NAT, encrypted 60GiB volume; no inbound ports.')
+            print('PLAN GitHub main-only OIDC grants a fixed-port SSM tunnel, without EKS administration.')
+            return
+        self.identity()
+        stack = self.describe_stack(STACKS['eks'])
+        if not stack or stack['StackStatus'] not in SUCCESS:
+            raise ProvisionError('The EKS foundation must complete before deploying private SonarQube.')
+        outputs = self.outputs(stack)
+        provider = self.existing_provider()
+        if not provider:
+            raise ProvisionError('The validated GitHub OIDC provider is required for Sonar CI access.')
+        result = self.upsert_stack('sonarqube', {'VpcId': outputs['VpcId'],
+                                                'SubnetId': outputs['PrivateSubnets'].split(',')[0],
+                                                'GitHubProviderArn': provider})
+        print(json.dumps(self.outputs(result), indent=2), flush=True)
 
     def connect(self):
         if not self.execute:
@@ -517,12 +536,45 @@ class Provisioner:
         self.kubectl_run('apply', '-f', ROOT / 'deploy/argocd/project.yaml', write=True)
         application = 'application.yaml' if production else 'application-staging.yaml'
         self.kubectl_run('apply', '-f', ROOT / 'deploy/argocd' / application, write=True)
+        if production:
+            self.configure_dashboard_route()
         if self.execute:
             for field, expected in (('sync.revision', revision), ('sync.status', 'Synced'),
                                     ('health.status', 'Healthy'), ('operationState.phase', 'Succeeded')):
                 self.kubectl_run('-n', 'argocd', 'wait', f'application/{app}',
                                  f'--for=jsonpath={{.status.{field}}}={expected}', '--timeout=25m', timeout=1560)
             print(f'{app}: desired revision {revision}, Synced/Healthy, hook operation Succeeded.', flush=True)
+
+    def configure_dashboard_route(self):
+        """Publish the owned internal ALB under the fixed private API name.
+
+        Apply the Argo application first: Rollout/Ingress creation does not depend
+        on dashboard connectivity. Resolve DNS before waiting for PostSync smoke.
+        """
+        if not self.execute:
+            print('PLAN wait for production internal ALB and configure owned private api.market-intel.internal DNS.')
+            return
+        stack = self.describe_stack(STACKS['eks'])
+        outputs = self.outputs(stack)
+        deadline = time.monotonic() + 1200
+        while time.monotonic() < deadline:
+            raw = self.kubectl_run('-n', 'market-intel', 'get', 'ingress', 'market-api-canary',
+                                   '-o', 'json', '--ignore-not-found')
+            ingress = json.loads(raw) if raw.strip() else {}
+            addresses = ingress.get('status', {}).get('loadBalancer', {}).get('ingress', [])
+            hostname = next((item.get('hostname', '') for item in addresses if item.get('hostname')), '')
+            if hostname:
+                break
+            time.sleep(10)
+        else:
+            raise ProvisionError('Production ALB did not receive a hostname; inspect Argo/Ingress before retrying.')
+        if not re.fullmatch(r'internal-[a-z0-9-]+\.ap-south-1\.elb\.amazonaws\.com', hostname):
+            raise ProvisionError('Refusing a non-internal or unexpected-region ALB hostname.')
+        balancers = self.aws('elbv2', 'describe-load-balancers')['LoadBalancers']
+        matches = [lb for lb in balancers if lb.get('DNSName') == hostname]
+        if len(matches) != 1 or matches[0].get('VpcId') != outputs['VpcId'] or matches[0].get('Scheme') != 'internal':
+            raise ProvisionError('Production ALB must be internal and belong to the owned EKS VPC.')
+        self.upsert_stack('routing', {'HostedZoneId': outputs['PrivateApiZoneId'], 'AlbDnsName': hostname})
 
     def harden_cni(self):
         if not self.execute:
@@ -569,7 +621,7 @@ class Provisioner:
 
 def parser():
     result = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    result.add_argument('phase', choices=('foundations', 'controllers-bootstrap', 'gitops-staging',
+    result.add_argument('phase', choices=('foundations', 'sonarqube', 'controllers-bootstrap', 'gitops-staging',
                                          'gitops-production', 'harden-cni', 'status'))
     result.add_argument('--execute', action='store_true', help='Execute reviewed mutations; otherwise print a plan. status is read-only.')
     result.add_argument('--admin-cidr', type=public_cidr)

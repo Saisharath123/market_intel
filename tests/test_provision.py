@@ -97,6 +97,41 @@ def test_release_rejects_duplicate_image_and_mutable_tag(tmp_path):
         provision.release_images(path)
 
 
+@pytest.mark.parametrize('hostname,vpc,scheme', [
+    ('public.example.com', 'vpc-owned', 'internal'),
+    ('internal-market-123.ap-south-1.elb.amazonaws.com', 'vpc-other', 'internal'),
+    ('internal-market-123.ap-south-1.elb.amazonaws.com', 'vpc-owned', 'internet-facing'),
+])
+def test_dashboard_dns_refuses_foreign_or_public_load_balancer(tmp_path, monkeypatch, hostname, vpc, scheme):
+    op = operator(tmp_path, '--execute')
+    monkeypatch.setattr(op, 'describe_stack', lambda name: {'Outputs': [
+        {'OutputKey': 'VpcId', 'OutputValue': 'vpc-owned'},
+        {'OutputKey': 'PrivateApiZoneId', 'OutputValue': 'Zowned'}]})
+    monkeypatch.setattr(op, 'kubectl_run', lambda *args, **kwargs: json.dumps({
+        'status': {'loadBalancer': {'ingress': [{'hostname': hostname}]}}}))
+    monkeypatch.setattr(op, 'aws', lambda *args, **kwargs: {'LoadBalancers': [
+        {'DNSName': hostname, 'VpcId': vpc, 'Scheme': scheme}]})
+    monkeypatch.setattr(op, 'upsert_stack', lambda *args, **kwargs: pytest.fail('Untrusted DNS target was applied'))
+    with pytest.raises(provision.ProvisionError, match='ALB'):
+        op.configure_dashboard_route()
+
+
+def test_dashboard_dns_uses_owned_stack_after_validating_internal_alb(tmp_path, monkeypatch):
+    op = operator(tmp_path, '--execute')
+    hostname = 'internal-market-123.ap-south-1.elb.amazonaws.com'
+    monkeypatch.setattr(op, 'describe_stack', lambda name: {'Outputs': [
+        {'OutputKey': 'VpcId', 'OutputValue': 'vpc-owned'},
+        {'OutputKey': 'PrivateApiZoneId', 'OutputValue': 'Zowned'}]})
+    monkeypatch.setattr(op, 'kubectl_run', lambda *args, **kwargs: json.dumps({
+        'status': {'loadBalancer': {'ingress': [{'hostname': hostname}]}}}))
+    monkeypatch.setattr(op, 'aws', lambda *args, **kwargs: {'LoadBalancers': [
+        {'DNSName': hostname, 'VpcId': 'vpc-owned', 'Scheme': 'internal'}]})
+    calls = []
+    monkeypatch.setattr(op, 'upsert_stack', lambda *args: calls.append(args))
+    op.configure_dashboard_route()
+    assert calls == [('routing', {'HostedZoneId': 'Zowned', 'AlbDnsName': hostname})]
+
+
 def test_boolean_chart_flags_are_not_rendered_as_truthy_strings(tmp_path, monkeypatch):
     op = operator(tmp_path)
     calls = []

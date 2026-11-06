@@ -1,3 +1,19 @@
+{{/* Production website requests must traverse the same weighted ALB as analysis traffic. */}}
+{{- define "market-intel.marketTrafficUrl" -}}
+{{- if .Values.rollouts.routeDashboardThroughAlb -}}
+{{- if not .Values.rollouts.enabled -}}
+{{- fail "rollouts.routeDashboardThroughAlb requires rollouts.enabled: true" -}}
+{{- end -}}
+{{- $hostname := required "rollouts.apiHostname is required for weighted dashboard traffic" .Values.rollouts.apiHostname -}}
+{{- if not (regexMatch "^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$" $hostname) -}}
+{{- fail "rollouts.apiHostname must be a DNS hostname without a scheme, path or port" -}}
+{{- end -}}
+{{- printf "http://%s" $hostname -}}
+{{- else -}}
+{{- (index .Values.services "dashboard").env.MARKET_API_URL -}}
+{{- end -}}
+{{- end -}}
+
 {{/* Deployments and Rollouts share the same pod security and resource settings. */}}
 {{- define "market-intel.podSpec" -}}
 {{- $service := .service -}}
@@ -37,7 +53,11 @@ containers:
         value: /tmp/cache
       {{- range $key, $value := $service.env }}
       - name: {{ $key }}
+        {{- if and (eq $.name "dashboard") (eq $key "MARKET_API_URL") }}
+        value: {{ include "market-intel.marketTrafficUrl" $.root | quote }}
+        {{- else }}
         value: {{ $value | quote }}
+        {{- end }}
       {{- end }}
     resources:
       requests:

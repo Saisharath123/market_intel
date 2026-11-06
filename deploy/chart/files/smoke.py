@@ -17,7 +17,7 @@ def fetch(url, as_json=True):
     return json.loads(payload) if as_json else payload.decode('utf-8').strip()
 
 
-def check_snapshot(payload, expect_demo):
+def check_snapshot(payload, expect_demo, expected_mode=None):
     if payload.get('status') != 'ok' or not payload.get('items'):
         raise ValueError('Provider returned an empty, unavailable, partial or stale snapshot')
     fetched_at = datetime.fromisoformat(payload['fetched_at'].replace('Z', '+00:00'))
@@ -25,17 +25,23 @@ def check_snapshot(payload, expect_demo):
         raise ValueError('Missing or stale response fetch timestamp')
     if expect_demo and payload.get('mode') != 'demo':
         raise ValueError('Staging must use the explicit deterministic demo adapter')
+    if expected_mode and payload.get('mode') != expected_mode:
+        raise ValueError('Response provider mode does not match the reviewed environment')
 
 
-def check_services(market_url, news_url, dashboard_url, expect_demo):
+def check_services(market_url, news_url, dashboard_url, expect_demo,
+                   market_traffic_url=None, market_mode=None, news_mode=None):
     if fetch(market_url + '/health').get('service') != 'market':
         raise ValueError('Market service boundary changed')
     if fetch(news_url + '/health').get('service') != 'news':
         raise ValueError('News service boundary changed')
-    quotes = fetch(market_url + '/api/v1/quotes')
+    # Probe process/metrics directly, and user-facing API contracts through the
+    # weighted production route. The ALB intentionally routes only /api/v1.
+    traffic_url = (market_traffic_url or market_url).rstrip('/')
+    quotes = fetch(traffic_url + '/api/v1/quotes')
     headlines = fetch(news_url + '/api/v1/news')
-    check_snapshot(quotes, expect_demo)
-    check_snapshot(headlines, expect_demo)
+    check_snapshot(quotes, expect_demo, market_mode)
+    check_snapshot(headlines, expect_demo, news_mode)
     if expect_demo and len(quotes['items']) != 6:
         raise ValueError('Expected the six-symbol deterministic watchlist')
     for quote in quotes['items']:
@@ -44,7 +50,7 @@ def check_services(market_url, news_url, dashboard_url, expect_demo):
             raise ValueError('Invalid quote contract')
     if not all(item.get('title') for item in headlines['items']):
         raise ValueError('Invalid news contract')
-    insights = fetch(market_url + '/api/v1/insights')
+    insights = fetch(traffic_url + '/api/v1/insights')
     if not all(key in insights for key in ('advances', 'declines', 'unchanged', 'leaders')):
         raise ValueError('Invalid insight contract')
     if fetch(dashboard_url + '/_stcore/health', as_json=False) != 'ok':
@@ -59,12 +65,16 @@ def main():
     parser.add_argument('--market-url', default='http://market-api:8000')
     parser.add_argument('--news-url', default='http://news-api:8000')
     parser.add_argument('--dashboard-url', default='http://dashboard:8501')
+    parser.add_argument('--market-traffic-url', help='Weighted API origin; process and metrics checks remain direct')
+    parser.add_argument('--market-mode')
+    parser.add_argument('--news-mode')
     parser.add_argument('--expect-demo', action='store_true')
     parser.add_argument('--attempts', type=int, default=6)
     args = parser.parse_args()
     for attempt in range(args.attempts):
         try:
-            check_services(args.market_url, args.news_url, args.dashboard_url, args.expect_demo)
+            check_services(args.market_url, args.news_url, args.dashboard_url, args.expect_demo,
+                           args.market_traffic_url, args.market_mode, args.news_mode)
             print('Dashboard, market/news data contracts, freshness and metrics passed')
             return
         except (OSError, ValueError, KeyError) as error:
