@@ -16,7 +16,8 @@ Staging uses one replica per service with demo data. Production uses real Yahoo/
 - A restricted public Kubernetes administration endpoint plus private endpoint access. Public API access means authenticated, CIDR-restricted cluster administration; it does not publish the applications.
 - Private ECR repositories for dashboard, market and news images. GitHub holds source/configuration; ECR holds runtime images.
 - `market-intel-staging` and `market-intel` namespaces, managed by separate Argo CD Applications.
-- An internal application ALB for market-API canary traffic. Administrative UIs and normal local previews use authenticated `kubectl port-forward`. The ALB is not internet-facing.
+- An internal application ALB for market-API canary traffic, including actual production dashboard requests through the owned `api.market-intel.internal` private DNS record. Administrative UIs and local previews use authenticated `kubectl port-forward`.
+- A separate private `t3a.large` SonarQube Community Build/PostgreSQL host with encrypted storage and no inbound ports. Hosted CI reaches its loopback-only port through a repository/main-scoped OIDC role and a fixed-port SSM document.
 
 The EKS managed control plane is highly available. Two workers, one NAT gateway, single-replica monitoring and the absence of application persistence do not establish end-to-end high availability. Node placement and workload distribution must be checked after creation.
 
@@ -25,6 +26,8 @@ EKS 1.36 is under standard support through August 2, 2027; 1.37 is the latest st
 ## Trust and delivery boundaries
 
 GitHub Actions obtains short-lived AWS credentials through OIDC, restricted to the exact repository and permitted branch/environment. Its publishing role can write the dedicated ECR repositories; it does not administer Kubernetes. Argo CD reads approved Git state and reconciles Kubernetes. The app containers need neither AWS access keys nor a Kubernetes service-account token.
+
+Source checks run before image builds. Community Build adds mandatory main/release analysis, while PRs run tests, secrets, image and manifest checks without AWS/Sonar credentials. The separate Sonar role cannot publish images or administer EKS. Its project-analysis token is independent of the administrator credential; native PR analysis needs a licensed edition.
 
 Repository names alone may not be sufficient in an OIDC trust policy: GitHub's current subject format can contain immutable owner/repository IDs. Preserve and verify the actual repository subject instead of widening it with wildcards when authentication fails. [GitHub OIDC in AWS](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws)
 

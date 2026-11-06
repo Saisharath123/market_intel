@@ -63,6 +63,31 @@ def github_environment():
     return environment
 
 
+def restrict_default_permissions(password):
+    """Narrow inherited privileges using groups/grants the server actually has.
+
+    Newer Sonar releases no longer expose Anyone as a removable global group.
+    A renamed default group is also valid. Discover both instead of treating an
+    absent group as an error or suppressing arbitrary API failures.
+    """
+    result = api('user_groups/search?ps=100', 'admin', password)
+    groups = result.get('groups', [])
+    if result.get('paging', {}).get('total', len(groups)) > len(groups):
+        raise RuntimeError('Default-group discovery exceeded one page; review this dedicated instance before continuing.')
+    defaults = [group['name'] for group in groups if group.get('default')]
+    if len(defaults) != 1:
+        raise RuntimeError('Expected exactly one default Sonar group; no global permissions were changed.')
+    for permission in ('scan', 'provisioning'):
+        result = api('permissions/groups?permission=' + permission + '&ps=100', 'admin', password)
+        granted = result.get('groups', [])
+        if result.get('paging', {}).get('total', len(granted)) > len(granted):
+            raise RuntimeError('Permission lookup exceeded one page; refusing a partial privilege check.')
+        for group in granted:
+            if group.get('name') == defaults[0] or group.get('name', '').casefold() == 'anyone':
+                api('permissions/remove_group', 'admin', password,
+                    fields={'groupName': group['name'], 'permission': permission})
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--secret-arn', required=True)
@@ -100,10 +125,7 @@ def main():
     # its membership cannot be narrowed. Remove the default global analysis
     # and project-creation grants on this dedicated instance instead. Otherwise
     # the scanner account would inherit broader rights than its direct grants.
-    for group in ('sonar-users', 'Anyone'):
-        for permission in ('scan', 'provisioning'):
-            api('permissions/remove_group', 'admin', password,
-                fields={'groupName': group, 'permission': permission})
+    restrict_default_permissions(password)
     projects = api('projects/search?projects=' + PROJECT, 'admin', password).get('components', [])
     if not projects:
         api('projects/create', 'admin', password,
