@@ -1,0 +1,20 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Private dashboard-to-ALB API routing for Market Intel canary releases.",
+  "Parameters": {
+    "HostedZoneId": {"Type": "String"},
+    "AlbDnsName": {"Type": "String", "AllowedPattern": "internal-[a-z0-9-]+\\.ap-south-1\\.elb\\.amazonaws\\.com"}
+  },
+  "Resources": {
+    "ApiRecord": {
+      "Type": "AWS::Route53::RecordSet",
+      "Properties": {
+        "HostedZoneId": {"Ref": "HostedZoneId"},
+        "Name": "api.market-intel.internal",
+        "Type": "CNAME",
+        "TTL": "30",
+        "ResourceRecords": [{"Ref": "AlbDnsName"}]
+      }
+    }
+  }
+}

@@ -2,7 +2,7 @@
 
 Three Python microservices demonstrate a complete container release path: GitHub Actions CI, private Amazon ECR images, Argo CD GitOps on Amazon EKS, and monitored progressive delivery. Application source and deployment configuration live in [Saisharath123/market_intel](https://github.com/Saisharath123/market_intel).
 
-**Implementation status:** the revised delivery platform is being prepared locally. No AWS deployment or GitHub push for this revision has been performed. Historical October deployment records do not establish current availability. Sonar integration is an optional later step until its server and credentials are configured.
+**Release policy:** PRs require tests, secret scanning, image checks and manifest validation. On `main`, private SonarQube Community Build adds a mandatory quality gate before release images can be built or published. Production promotes the staged image digests and routes dashboard API calls through the monitored ALB canary. Check current Actions runs and Argo application status for runtime evidence; historical deployment notes do not establish current availability.
 
 The stock dashboard uses actual Yahoo Finance quotes and CNBC TV18 RSS headlines in production mode. It polls and caches responses for five minutes; it does **not** provide exchange tick streaming. Staging uses explicit synthetic fixtures so release verification does not depend on an external feed. Live adapters never silently substitute demo prices.
 
@@ -13,7 +13,8 @@ The stock dashboard uses actual Yahoo Finance quotes and CNBC TV18 RSS headlines
 | Dashboard (`services/dashboard`) | Streamlit UI, consuming both internal APIs over HTTP |
 | Market API (`services/market`) | Six-symbol watchlist, quote normalization, changes and insights |
 | News API (`services/news`) | Bounded, deduplicated RSS headlines and source timestamps |
-| CI (`.github/workflows`) | Tests, container smoke checks, secret scanning, image scanning and optional Sonar quality gate |
+| CI (`.github/workflows`) | Tests, container smoke checks, secret scanning, image scanning and mandatory main/release Sonar quality gate |
+| SonarQube (`infra/sonarqube*`) | Private Community Build/PostgreSQL host, project-scoped analysis token and OIDC-authenticated SSM connection |
 | GitOps (`deploy/chart`, `deploy/argocd`) | Staging and production configuration, immutable image digests and rollout policy |
 | Monitoring (`deploy/monitoring`) | Versioned Prometheus/Grafana bootstrap values and application dashboard |
 | Infrastructure (`infra`) | EKS configuration and bootstrap tooling; provisioning is a separate operator action |
@@ -26,7 +27,8 @@ See [architecture and boundaries](docs/ARCHITECTURE.md), [release walkthrough](d
 flowchart LR
     PR[Code pull request] --> CI[Tests, Gitleaks, container checks]
     CI --> Main[Merge to main]
-    Main --> Build[GitHub Actions: build and Trivy scan]
+    Main --> Sonar[Private SonarQube: blocking quality gate]
+    Sonar --> Build[GitHub Actions: build and Trivy scan]
     Build --> ECR[Three private ECR images by digest]
     Build --> StagePR[Staging digest pull request]
     StagePR --> Argo[Argo CD watches Git]

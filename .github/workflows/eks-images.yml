@@ -15,7 +15,9 @@ on:
       - services/**
       - requirements*.txt
       - Dockerfile
+      - .dockerignore
       - compose.yaml
+      - sonar-project.properties
       - .github/actions/**
       - .github/scripts/**
       - .github/workflows/ci.yml
@@ -28,6 +30,9 @@ concurrency:
 jobs:
   validation:
     if: github.ref == 'refs/heads/main' && vars.EKS_RELEASE_ENABLED == 'true' && (github.event_name == 'push' || inputs.confirm_publish == true)
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/ci.yml
     secrets: inherit
   release:

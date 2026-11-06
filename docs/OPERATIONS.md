@@ -27,6 +27,31 @@ kubectl --context market-intel-sre -n monitoring port-forward service/monitoring
 
 Argo CD is at `https://localhost:8443` and Grafana at `http://localhost:3000`. Repeat the environment setup in each new terminal before starting a forward. The initial Argo certificate may be self-signed. Retrieve administrator passwords privately from `argocd/argocd-initial-admin-secret` and `monitoring/market-intel-grafana-admin`, rotate them, and add organizational authentication before broader access. The bootstrap generates the Grafana credential once and reuses its owned Secret on subsequent runs; it never prints or saves the password locally. Do not save password values as evidence. A CloudShell port-forward listens inside CloudShell; it does not open localhost on your laptop.
 
+## SonarQube and release prerequisites
+
+Follow [the private AWS SonarQube setup](SONARQUBE.md) to prepare the Community Build server, PostgreSQL, project and analysis token. Configure repository variables `SONAR_TUNNEL_ROLE_ARN` and `SONAR_SSM_INSTANCE_ID`, and store the analysis credential as secret `SONAR_TOKEN`. The main-only Sonar job uses short-lived OIDC credentials for the dedicated tunnel role and a fixed-port SSM session to `http://127.0.0.1:9000`; it closes the session after the scan. Do not expose port 9000 or PostgreSQL to the internet.
+
+SonarQube is required on `main`, including the reusable CI validation before image publishing. Missing configuration, connectivity failure or a red quality gate blocks the release. `SONAR_ENABLED` cannot bypass it. Community Build analyzes only the main branch; PRs and forks run lint, tests, secrets and container checks without AWS/Sonar access. Native Sonar PR analysis requires a paid edition. A green PR check does not establish that the later main-branch Sonar gate passed.
+
+Inspect the **Mandatory main-branch Sonar quality gate** job and the Sonar project result for the exact source SHA. Its coverage artifact belongs to the same workflow run and is retained for seven days. If it has expired, rerun all jobs to regenerate coverage. Keep administrator credentials, project tokens and complete environment dumps out of logs and evidence.
+
+## Production routing and smoke checks
+
+Production sets the dashboard's market API origin to `http://api.market-intel.internal`. This private name resolves to the internal ALB whose stable/canary target weights Argo Rollouts controls. Market requests from the dashboard and the in-cluster canary traffic generator therefore traverse the same weighted route. News requests remain on the news service.
+
+Initial `gitops-production` bootstrap waits for the ALB hostname, checks its region, internal scheme and owned VPC, then updates the private CNAME in the owned routing CloudFormation stack. It performs this step before waiting for successful production PostSync smoke. Re-run the reviewed bootstrap after an ALB replacement to update the private record; do not redirect the production dashboard to the stable Kubernetes service as a connectivity workaround, because that bypasses canary weights.
+
+Both staging and production enable the PostSync `market-intel-smoke` Job. The production hook exercises quotes/insights through the weighted private API name, checks market/news health directly, validates the configured provider modes and snapshot contracts, and checks dashboard health and API metrics. Failed Jobs remain for investigation; successful hook Jobs are deleted. Use the Argo operation status as durable evidence that a deleted successful hook completed.
+
+```powershell
+kubectl --context market-intel-sre -n market-intel get ingress market-api-canary -o wide
+kubectl --context market-intel-sre -n argocd get application market-intel -o jsonpath='{.status.operationState.phase}'
+kubectl --context market-intel-sre -n market-intel get jobs
+kubectl --context market-intel-sre -n market-intel logs job/market-intel-smoke --tail=100
+```
+
+The final log command applies while the hook Job exists, especially after failure. Inspect DNS, ingress reconciliation and the failed hook's message before retrying. A private DNS record alone does not prove weighted routing, provider health or successful deployment.
+
 ## Monitoring boundaries
 
 The monitoring bootstrap installs Prometheus, Grafana, Alertmanager, kube-state-metrics and node exporters. The provisioned **Market Intel - Release and API Health** dashboard switches between staging and production and shows request rate, errors, p95 latency, targets, ready pods, restarts, memory and CPU. Generate some API traffic and allow several scrapes before expecting rate charts.

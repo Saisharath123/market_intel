@@ -34,6 +34,17 @@ def main():
     if len(templates) != 1:
         raise SystemExit('Expected exactly one production canary AnalysisTemplate')
     metrics = {metric['name']: metric for metric in templates[0]['spec']['metrics']}
+    if len(metrics) != len(templates[0]['spec']['metrics']):
+        raise SystemExit('Canary metric names must be unique')
+    drill = metrics.pop('controlled-abort-drill', None)
+    if drill is not None:
+        # The explicit abort drill adds a deterministic failed measurement. It
+        # must not replace or weaken any of the normal canary quality metrics.
+        if (drill.get('count') != 1 or drill.get('failureLimit') != 0
+                or drill.get('consecutiveErrorLimit') != 1
+                or drill.get('successCondition') != 'len(result) == 1 && result[0] == 1'
+                or drill['provider']['prometheus']['query'].strip() != 'vector(0)'):
+            raise SystemExit('Controlled abort drill must deterministically fail its first measurement')
     expected = {
         'sufficient-canary-requests', 'canary-server-error-ratio', 'canary-p95-seconds',
     }
@@ -113,9 +124,21 @@ def main():
             case('Bad canary exceeds error and latency limits', unhealthy, 240, 0.5, 4.8),
         ],
     }
+    if drill is not None:
+        query = drill['provider']['prometheus']['query']
+        tests['tests'].append({
+            'name': 'Explicit abort drill fails its success comparison',
+            'interval': '30s',
+            'input_series': [],
+            'promql_expr_test': [{
+                'expr': f'({query}) == bool 1',
+                'eval_time': '2m',
+                'exp_samples': [{'labels': '{}', 'value': 0}],
+            }],
+        })
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(yaml.safe_dump(tests, sort_keys=False), encoding='utf-8')
-    print(f'Generated four canary-query scenarios from {args.rendered}; run promtool on {args.output}.')
+    print(f'Generated {len(tests["tests"])} canary-query scenarios from {args.rendered}; run promtool on {args.output}.')
 
 
 if __name__ == '__main__':

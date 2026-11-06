@@ -14,7 +14,7 @@ fi
 git fetch origin main
 if [ "$stage" = staging ]; then
   # A slow old build must not replace a newer source release.
-  git diff --quiet "$GITHUB_SHA" origin/main -- app.py market services requirements.txt requirements-dev.txt Dockerfile compose.yaml .github
+  git diff --quiet "$GITHUB_SHA" origin/main -- app.py market services 'requirements*.txt' Dockerfile .dockerignore compose.yaml sonar-project.properties .github
 else
   # Promotion must use the staged image set the operator actually reviewed.
   test "$(git rev-parse "$GITHUB_SHA:deploy/chart/values-staging.yaml")" = "$(git rev-parse origin/main:deploy/chart/values-staging.yaml)"

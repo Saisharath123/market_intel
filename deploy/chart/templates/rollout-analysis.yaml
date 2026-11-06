@@ -7,6 +7,20 @@ spec:
   args:
     - name: canary-hash
   metrics:
+    {{- if .Values.rollouts.abortDrillId }}
+    # Explicit lab opt-in: exercise the normal inline-analysis abort path while
+    # keeping the tested application images and every security gate intact.
+    - name: controlled-abort-drill
+      count: 1
+      failureLimit: 0
+      consecutiveErrorLimit: 1
+      successCondition: len(result) == 1 && result[0] == 1
+      provider:
+        prometheus:
+          address: {{ .Values.rollouts.prometheusAddress | quote }}
+          timeout: 10
+          query: vector(0)
+    {{- end }}
     - name: sufficient-canary-requests
       interval: 30s
       count: 3

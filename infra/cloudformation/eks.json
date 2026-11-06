@@ -2,6 +2,15 @@
   "AWSTemplateFormatVersion": "2010-09-09",
   "Description": "Market Intel EKS learning environment: private workers, two AZs, one NAT; GitHub Actions owns CI and Argo CD owns application delivery.",
   "Resources": {
+    "PrivateApiZone": {
+      "Type": "AWS::Route53::HostedZone",
+      "Properties": {
+        "Name": "market-intel.internal",
+        "HostedZoneConfig": {"PrivateZone": true},
+        "VPCs": [{"VPCId": {"Ref": "Vpc"}, "VPCRegion": {"Ref": "AWS::Region"}}],
+        "HostedZoneTags": [{"Key": "Project", "Value": "market-intel"}]
+      }
+    },
     "Vpc": {
       "Type": "AWS::EC2::VPC",
       "Properties": {
@@ -506,6 +515,7 @@
     }
   },
   "Outputs": {
+    "PrivateApiZoneId": {"Value": {"Ref": "PrivateApiZone"}},
     "ClusterName": {
       "Value": {
         "Ref": "Cluster"
