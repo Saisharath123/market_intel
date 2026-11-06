@@ -4,8 +4,8 @@
 controller:
   replicas: 1
   awsVerifyTargetGroup: true
-  extraArgs:
-    - --aws-region=ap-south-1
+  # v1.10.1 uses the AWS SDK region environment; --aws-region is not a flag.
+  # EKS Pod Identity injects AWS_REGION/AWS_DEFAULT_REGION in this cluster.
   resources:
     requests:
       cpu: 100m

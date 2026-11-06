@@ -1,5 +1,7 @@
 # EKS deployment runbook
 
+> Historical October deployment notes. Use [the current release workflow](../docs/CICD.md), [operations](../docs/OPERATIONS.md), and `infra/provision.py` for the revised staging/Sonar/canary platform. Statements below describe the earlier deployment, including infrastructure later removed.
+
 Status (2026-10-21): deployed in Mumbai. Cluster `market-intel-prod` is active, with two Ready `t3a.medium` workers observed in ap-south-1a and ap-south-1b. Dashboard, market-api and news-api each have 2/2 available replicas. Public ingress is disabled. A separate internal HTTPS ALB now serves dashboard, Argo CD and Grafana through AWS Client VPN and private DNS. Device-side VPN import and HTTPS CA trust are required; see [private access and Argo learning guide](ARGO-LEARNING.md).
 
 Observability: kube-prometheus-stack 92.11.0 is installed in `monitoring`, with Prometheus, Grafana, Alertmanager, node exporters and kube-state-metrics. Encrypted gp3 claims are bound (20Gi metrics, 5Gi Grafana, 2Gi alerts). Kubernetes scrape targets are up; API ServiceMonitors and alert rules are enabled. Grafana has a provisioned **Market Intel APIs** dashboard plus Kubernetes dashboards. Logs are not ingested into Grafana: use Argo Pod Logs or kubectl for application logs; CloudWatch contains `/aws/eks/market-intel-prod/cluster` control-plane logs and `/market-intel/client-vpn` connection logs. Loki/Alloy and durable application-log retention are not installed.
