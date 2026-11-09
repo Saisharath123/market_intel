@@ -276,8 +276,22 @@
         ]
       }
     },
+    "ControlPlaneLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/aws/eks/market-intel-prod/cluster",
+        "RetentionInDays": 180,
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "market-intel"
+          }
+        ]
+      }
+    },
     "Cluster": {
       "Type": "AWS::EKS::Cluster",
+      "DependsOn": "ControlPlaneLogs",
       "Properties": {
         "Name": "market-intel-prod",
         "Version": {
@@ -500,6 +514,7 @@
         },
         "AddonName": "vpc-cni",
         "ResolveConflicts": "OVERWRITE",
+        "ConfigurationValues": "{\"enableNetworkPolicy\":\"true\"}",
         "PodIdentityAssociations": [
           {
             "ServiceAccount": "aws-node",

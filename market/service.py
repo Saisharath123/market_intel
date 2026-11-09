@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from functools import wraps
 from email.utils import parsedate_to_datetime
 from threading import Lock
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 from defusedxml import ElementTree
@@ -20,6 +20,42 @@ NEWS_FEEDS = {
     'moneycontrol': ('Moneycontrol', NEWS_URL, 'moneycontrol.com'),
     'cnbctv18': ('CNBC TV18', 'https://www.cnbctv18.com/commonfeeds/v1/cne/rss/market.xml', 'cnbctv18.com'),
 }
+MAX_RSS_BYTES = 2_000_000
+MAX_RSS_REDIRECTS = 3
+
+
+class _NewsFeedSession(requests.Session):
+    def get_redirect_target(self, response):
+        # Requests normally consumes redirect bodies to prepare Response.next,
+        # even when allow_redirects=False. The feed reader checks each hop.
+        return None
+
+
+def _fetch_news_feed(url, provider_host):
+    allowed_hosts = (provider_host, f'www.{provider_host}')
+    with _NewsFeedSession() as session:
+        for _ in range(MAX_RSS_REDIRECTS + 1):
+            with session.get(url, timeout=10, stream=True, allow_redirects=False,
+                             headers={'User-Agent': 'IndianMarketMVP/0.1 RSS reader'}) as response:
+                if response.is_redirect:
+                    location = response.headers['Location']
+                    target = urlparse(urljoin(url, location))
+                    if ('\\' in location or target.scheme != 'https' or target.hostname not in allowed_hosts
+                            or target.port not in (None, 443) or target.username is not None):
+                        raise ValueError('RSS redirect left the approved provider')
+                    url = target._replace(fragment='').geturl()
+                    continue
+
+                response.raise_for_status()
+                if response.status_code != 200:
+                    raise ValueError('Expected a complete RSS response')
+                payload = bytearray()
+                for chunk in response.iter_content(chunk_size=65_536):
+                    if len(payload) + len(chunk) > MAX_RSS_BYTES:
+                        raise ValueError('Feed exceeds size limit')
+                    payload.extend(chunk)
+                return bytes(payload)
+    raise ValueError('Too many RSS redirects')
 
 
 def utcnow():
@@ -158,11 +194,7 @@ def news():
     if mode not in NEWS_FEEDS:
         return dict(result, status='unavailable', error='NEWS_MODE must be demo, cnbctv18 or moneycontrol.')
     try:
-        response = requests.get(url, timeout=10, headers={'User-Agent': 'IndianMarketMVP/0.1 RSS reader'})
-        response.raise_for_status()
-        if len(response.content) > 2_000_000:
-            raise ValueError('Feed exceeds size limit')
-        result['items'] = parse_rss(response.content, source, host)
+        result['items'] = parse_rss(_fetch_news_feed(url, host), source, host)
         result['status'], result['error'] = news_freshness(result['items'])
     except (requests.RequestException, ValueError, ElementTree.ParseError, DefusedXmlException):
         result.update(status='unavailable', error=f'{source} RSS is unavailable or changed format. Retry later.')

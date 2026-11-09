@@ -30,6 +30,8 @@ ingress:
   host: ''
 monitoring:
   enabled: false
+networkPolicy:
+  enabled: false
 
 # CI may render test tags. Staging and production must pin sha256 digests.
 environment: local

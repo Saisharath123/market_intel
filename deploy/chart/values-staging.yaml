@@ -17,6 +17,8 @@ services:
       NEWS_MODE: demo
 monitoring:
   enabled: true
+networkPolicy:
+  enabled: true
 smokeTest:
   enabled: true
 rollouts:

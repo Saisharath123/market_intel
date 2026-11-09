@@ -3,7 +3,7 @@ from market.service import news
 from market.metrics import instrument
 from market.telemetry import configure_telemetry
 
-app = FastAPI(title='Market Intel News API', version='0.2.0')
+app = FastAPI(title='Market Intel News API', version='0.2.0', openapi_url=None)
 instrument(app, 'news')
 configure_telemetry('market-intel-news', app)
 
