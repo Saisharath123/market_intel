@@ -18,7 +18,6 @@ smokeTest:
   attempts: 60
   activeDeadlineSeconds: 600
 rollouts:
-  abortDrillId: reviewed-lab-drill-20261109
   enabled: true
   routeDashboardThroughAlb: true
   # Bootstrap maintains the private CNAME to the weighted ALB ingress.
