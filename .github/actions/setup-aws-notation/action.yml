@@ -1,0 +1,34 @@
+name: Prepare verified AWS Signer tooling
+description: Extract the pinned official Notation package into the runner's temporary directory.
+outputs:
+  notation:
+    description: Verified Notation executable
+    value: ${{ steps.extract.outputs.notation }}
+  libexec:
+    description: AWS Signer plugin directory
+    value: ${{ steps.extract.outputs.libexec }}
+  root-cert:
+    description: AWS commercial signing trust root from the verified package
+    value: ${{ steps.extract.outputs.root-cert }}
+runs:
+  using: composite
+  steps:
+    - id: extract
+      shell: bash
+      run: |
+        set -euo pipefail
+        destination=$(mktemp -d "$RUNNER_TEMP/market-intel-notation.XXXXXX")
+        package="$destination/aws-signer-notation-cli_amd64.deb"
+        curl --fail --silent --show-error --proto '=https' --retry 2 --max-time 60 \
+          -o "$package" https://d2hvyiie56hcat.cloudfront.net/linux/amd64/installer/deb/latest/aws-signer-notation-cli_amd64.deb
+        # The package was verified against AWS's documented OpenPGP signing key before this hash was pinned.
+        printf '%s  %s\n' 0bafab20eb047fd757897cd22ca77554b5f212c32cbbafa4321d4bc072d515f0 "$package" | sha256sum --check --status
+        dpkg-deb -x "$package" "$destination/vendor"
+        vendor="$destination/vendor/tmp/com.amazonaws.signer.notation.installer.deb"
+        plugin=com.amazonaws.signer.notation.plugin
+        install -Dm755 "$vendor/notation_libexec/notation-$plugin" "$destination/libexec/plugins/$plugin/notation-$plugin"
+        notation="$vendor/notation_bin/notation"
+        root_cert="$vendor/notation_config/aws-signer-notation-root.crt"
+        test -x "$notation" && test -f "$root_cert"
+        NOTATION_LIBEXEC="$destination/libexec" "$notation" plugin ls | grep -F "$plugin"
+        printf 'notation=%s\nlibexec=%s\nroot-cert=%s\n' "$notation" "$destination/libexec" "$root_cert" >> "$GITHUB_OUTPUT"
