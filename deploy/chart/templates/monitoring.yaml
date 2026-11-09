@@ -2,6 +2,7 @@
 {{- $phase := include "market-intel.productionTlsPhase" . }}
 {{- $productionHttps := or (eq $phase "switch") (eq $phase "retire") }}
 {{- $tls := or (default (dict) .Values.internalTls).enabled $productionHttps }}
+{{- $newsMtls := include "market-intel.newsMtlsMode" . }}
 {{- range $name := list "market-api" "news-api" }}
 ---
 apiVersion: monitoring.coreos.com/v1
@@ -30,6 +31,15 @@ spec:
             name: market-intel-ca
             key: ca.crt
         serverName: {{ include "market-intel.apiDns" (dict "name" $name "root" $) | quote }}
+        {{- if and $newsMtls (eq $name "news-api") }}
+        cert:
+          secret:
+            name: prometheus-news-client-tls
+            key: tls.crt
+        keySecret:
+          name: prometheus-news-client-tls
+          key: tls.key
+        {{- end }}
       {{- end }}
 {{- end }}
 ---

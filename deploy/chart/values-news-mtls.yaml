@@ -1,0 +1,4 @@
+# Layer on the HTTPS staging profile or production after HTTP retirement.
+# Enable require only after client preparation and certificate validation.
+internalTls:
+  newsClientAuth: prepare

@@ -1,0 +1,11 @@
+{{- if eq (include "market-intel.newsMtlsMode" .) "require" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: market-intel-news-mtls-probe
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+data:
+  probe.py: |
+{{ .Files.Get "files/news_mtls_probe.py" | indent 4 }}
+{{- end }}

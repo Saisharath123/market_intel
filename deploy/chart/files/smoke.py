@@ -15,6 +15,13 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
+def verified_opener(ca_file, client_cert=None):
+    context = ssl.create_default_context(cafile=ca_file)
+    if client_cert:
+        context.load_cert_chain(*client_cert)
+    return build_opener(ProxyHandler({}), HTTPSHandler(context=context), _NoRedirect()).open
+
+
 def fetch(url, as_json=True, *, open_url=None):
     with (open_url or urlopen)(url, timeout=10) as response:
         if response.status != 200:
@@ -38,17 +45,18 @@ def check_snapshot(payload, expect_demo, expected_mode=None):
 
 
 def check_services(market_url, news_url, dashboard_url, expect_demo,
-                   market_traffic_url=None, market_mode=None, news_mode=None, *, open_url=None):
+                   market_traffic_url=None, market_mode=None, news_mode=None, *, open_url=None, open_news_url=None):
     get = partial(fetch, open_url=open_url) if open_url is not None else fetch
+    get_news = partial(fetch, open_url=open_news_url) if open_news_url is not None else get
     if get(market_url + '/health').get('service') != 'market':
         raise ValueError('Market service boundary changed')
-    if get(news_url + '/health').get('service') != 'news':
+    if get_news(news_url + '/health').get('service') != 'news':
         raise ValueError('News service boundary changed')
     # Probe process/metrics directly, and user-facing API contracts through the
     # weighted production route. The ALB intentionally routes only /api/v1.
     traffic_url = (market_traffic_url or market_url).rstrip('/')
     quotes = get(traffic_url + '/api/v1/quotes')
-    headlines = get(news_url + '/api/v1/news')
+    headlines = get_news(news_url + '/api/v1/news')
     check_snapshot(quotes, expect_demo, market_mode)
     check_snapshot(headlines, expect_demo, news_mode)
     if expect_demo and len(quotes['items']) != 6:
@@ -78,6 +86,8 @@ def main():
     parser.add_argument('--market-mode')
     parser.add_argument('--news-mode')
     parser.add_argument('--tls-ca-file', help='Trust this CA for HTTPS APIs and refuse redirects')
+    parser.add_argument('--news-client-cert', help='Client certificate to send only to the HTTPS news API')
+    parser.add_argument('--news-client-key')
     parser.add_argument('--warm-tls-endpoint', nargs=2, action='append', default=[], metavar=('URL', 'SERVICE'),
                         help='Verify a parallel HTTPS health endpoint while HTTP remains the normal path')
     parser.add_argument('--expect-demo', action='store_true')
@@ -86,6 +96,9 @@ def main():
     if args.attempts < 1:
         parser.error('--attempts must be positive; every smoke run must check services')
     tls, open_verified = {}, None
+    if ((args.news_client_cert or args.news_client_key) and
+            not (args.news_client_cert and args.news_client_key and args.tls_ca_file and not args.warm_tls_endpoint)):
+        parser.error('News mTLS requires a client certificate pair and the HTTPS API profile')
     if args.warm_tls_endpoint and not args.tls_ca_file:
         parser.error('--warm-tls-endpoint requires --tls-ca-file')
     if args.tls_ca_file:
@@ -93,10 +106,11 @@ def main():
                 [args.market_url, args.news_url, args.market_traffic_url or args.market_url])
         if any(urlsplit(url).scheme != 'https' for url in urls):
             parser.error('TLS verification requires HTTPS endpoints')
-        context = ssl.create_default_context(cafile=args.tls_ca_file)
-        open_verified = build_opener(ProxyHandler({}), HTTPSHandler(context=context), _NoRedirect()).open
+        open_verified = verified_opener(args.tls_ca_file)
         if not args.warm_tls_endpoint:
             tls['open_url'] = open_verified
+        if args.news_client_cert:
+            tls['open_news_url'] = verified_opener(args.tls_ca_file, (args.news_client_cert, args.news_client_key))
     for attempt in range(args.attempts):
         try:
             check_services(args.market_url, args.news_url, args.dashboard_url, args.expect_demo,

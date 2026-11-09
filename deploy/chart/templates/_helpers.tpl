@@ -15,6 +15,29 @@
 {{- end -}}
 {{- end -}}
 
+{{- define "market-intel.newsMtlsMode" -}}
+{{- $tls := .Values.internalTls | default dict -}}
+{{- $mode := $tls.newsClientAuth | default "" -}}
+{{- if $mode -}}
+{{- $staging := and $tls.enabled (eq .Values.environment "staging") (eq .Release.Namespace "market-intel-staging") -}}
+{{- $retired := eq (include "market-intel.productionTlsPhase" .) "retire" -}}
+{{- if or (not (has $mode (list "prepare" "require"))) (not (or $staging $retired)) -}}
+{{- fail "internalTls.newsClientAuth must be prepare or require on the TLS staging or retired production profile" -}}
+{{- end -}}
+{{- $mode -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "market-intel.newsMtlsProbe" -}}
+exec:
+  command:
+    - python
+    - /var/run/market-intel/news-mtls-probe/probe.py
+    - {{ include "market-intel.apiDns" (dict "name" "news-api" "root" .root) | quote }}
+    - {{ .port | quote }}
+timeoutSeconds: 5
+{{- end -}}
+
 {{- define "market-intel.internalApiPorts" -}}
 {{- $phase := include "market-intel.productionTlsPhase" .root -}}
 {{- $port := (index .root.Values.services .name).port -}}
@@ -104,6 +127,9 @@ args:
 {{- $apiTls := and (not $dashboard) (or $stagingTls $retire) -}}
 {{- $dual := and (not $dashboard) (or (eq $phase "prepare") (eq $phase "switch")) -}}
 {{- $dashboardTrust := and $dashboard (or $stagingTls $phase) -}}
+{{- $newsMtls := include "market-intel.newsMtlsMode" .root -}}
+{{- $newsClient := and $dashboard $newsMtls -}}
+{{- $newsRequire := and (eq .name "news-api") (eq $newsMtls "require") -}}
 {{- $primaryPort := ternary 8443 $service.port (and (not $dashboard) $retire) -}}
 {{- $primaryPortName := ternary "https" "http" (and (not $dashboard) $retire) -}}
 {{- if and .root.Values.requireImageDigest (not (regexMatch "^.+@sha256:[a-f0-9]{64}$" $image)) -}}
@@ -151,6 +177,18 @@ containers:
       - name: REQUESTS_CA_BUNDLE
         value: /var/run/market-intel/ca/ca.crt
       {{- end }}
+      {{- if $newsClient }}
+      - name: NEWS_API_CLIENT_CERT_FILE
+        value: /var/run/market-intel/news-client/tls.crt
+      - name: NEWS_API_CLIENT_KEY_FILE
+        value: /var/run/market-intel/news-client/tls.key
+      {{- end }}
+      {{- if $newsRequire }}
+      - name: UVICORN_SSL_CA_CERTS
+        value: /var/run/market-intel/news-client-ca/ca.crt
+      - name: UVICORN_SSL_CERT_REQS
+        value: "2"
+      {{- end }}
       {{- range $key, $value := $service.env }}
       - name: {{ $key }}
         {{- if and (eq $.name "dashboard") (eq $key "MARKET_API_URL") }}
@@ -180,35 +218,64 @@ containers:
       - name: internal-tls
         mountPath: /var/run/market-intel/tls
         readOnly: true
-      {{- else if $dashboardTrust }}
+      {{- end }}
+      {{- if or $dashboardTrust $newsRequire }}
       - name: internal-ca
         mountPath: /var/run/market-intel/ca
         readOnly: true
       {{- end }}
+      {{- if $newsClient }}
+      - name: news-client
+        mountPath: /var/run/market-intel/news-client
+        readOnly: true
+      {{- end }}
+      {{- if $newsRequire }}
+      - name: news-client-ca
+        mountPath: /var/run/market-intel/news-client-ca
+        readOnly: true
+      - name: news-probe-client
+        mountPath: /var/run/market-intel/news-probe-client
+        readOnly: true
+      - name: news-mtls-probe
+        mountPath: /var/run/market-intel/news-mtls-probe
+        readOnly: true
+      {{- end }}
     startupProbe:
+      {{- if $newsRequire }}
+      {{- include "market-intel.newsMtlsProbe" (dict "root" .root "port" $primaryPort) | nindent 6 }}
+      {{- else }}
       httpGet:
         path: {{ $service.healthPath }}
         port: {{ $primaryPortName }}
         {{- if $apiTls }}
         scheme: HTTPS
         {{- end }}
+      {{- end }}
       failureThreshold: 30
       periodSeconds: 5
     readinessProbe:
+      {{- if $newsRequire }}
+      {{- include "market-intel.newsMtlsProbe" (dict "root" .root "port" $primaryPort) | nindent 6 }}
+      {{- else }}
       httpGet:
         path: {{ $service.healthPath }}
         port: {{ $primaryPortName }}
         {{- if $apiTls }}
         scheme: HTTPS
         {{- end }}
+      {{- end }}
       periodSeconds: 10
     livenessProbe:
+      {{- if $newsRequire }}
+      {{- include "market-intel.newsMtlsProbe" (dict "root" .root "port" $primaryPort) | nindent 6 }}
+      {{- else }}
       httpGet:
         path: {{ $service.healthPath }}
         port: {{ $primaryPortName }}
         {{- if $apiTls }}
         scheme: HTTPS
         {{- end }}
+      {{- end }}
       periodSeconds: 20
   {{- if $dual }}
   - name: {{ .name }}-tls
@@ -276,12 +343,34 @@ volumes:
     secret:
       secretName: {{ printf "%s-tls" .name | quote }}
       defaultMode: 288
-  {{- else if $dashboardTrust }}
+  {{- end }}
+  {{- if or $dashboardTrust $newsRequire }}
   - name: internal-ca
     configMap:
       name: market-intel-ca
       items:
         - key: ca.crt
           path: ca.crt
+  {{- end }}
+  {{- if $newsClient }}
+  - name: news-client
+    secret:
+      secretName: dashboard-news-client-tls
+      defaultMode: 288
+  {{- end }}
+  {{- if $newsRequire }}
+  - name: news-client-ca
+    configMap:
+      name: market-intel-news-client-ca
+      items:
+        - key: ca.crt
+          path: ca.crt
+  - name: news-probe-client
+    secret:
+      secretName: news-probe-client-tls
+      defaultMode: 288
+  - name: news-mtls-probe
+    configMap:
+      name: market-intel-news-mtls-probe
   {{- end }}
 {{- end -}}

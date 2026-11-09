@@ -2,6 +2,7 @@
 {{- $phase := include "market-intel.productionTlsPhase" . }}
 {{- $warm := eq $phase "prepare" }}
 {{- $tls := or (default (dict) .Values.internalTls).enabled (eq $phase "switch") (eq $phase "retire") }}
+{{- $newsMtls := include "market-intel.newsMtlsMode" . }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -33,6 +34,9 @@ spec:
         runAsNonRoot: true
         runAsUser: 10001
         runAsGroup: 10001
+        {{- if $newsMtls }}
+        fsGroup: 10001
+        {{- end }}
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -66,6 +70,12 @@ spec:
             - --tls-ca-file
             - /var/run/market-intel/ca/ca.crt
             {{- end }}
+            {{- if $newsMtls }}
+            - --news-client-cert
+            - /var/run/market-intel/news-client/tls.crt
+            - --news-client-key
+            - /var/run/market-intel/news-client/tls.key
+            {{- end }}
             {{- if eq .Values.environment "staging" }}
             - --expect-demo
             {{- end }}
@@ -86,6 +96,11 @@ spec:
               mountPath: /var/run/market-intel/ca
               readOnly: true
             {{- end }}
+            {{- if $newsMtls }}
+            - name: news-client
+              mountPath: /var/run/market-intel/news-client
+              readOnly: true
+            {{- end }}
       volumes:
         - name: checks
           configMap:
@@ -97,5 +112,11 @@ spec:
             items:
               - key: ca.crt
                 path: ca.crt
+        {{- end }}
+        {{- if $newsMtls }}
+        - name: news-client
+          secret:
+            secretName: smoke-news-client-tls
+            defaultMode: 288
         {{- end }}
 {{- end }}
