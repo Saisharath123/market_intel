@@ -1,14 +1,22 @@
 """Exercise running service contracts; HTTP 200 alone is insufficient."""
 import argparse
 from datetime import datetime, timezone
+from functools import partial
 import json
 import math
+import ssl
 import time
-from urllib.request import urlopen
+from urllib.parse import urlsplit
+from urllib.request import build_opener, HTTPRedirectHandler, HTTPSHandler, ProxyHandler, urlopen
 
 
-def fetch(url, as_json=True):
-    with urlopen(url, timeout=10) as response:
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        return None
+
+
+def fetch(url, as_json=True, *, open_url=None):
+    with (open_url or urlopen)(url, timeout=10) as response:
         if response.status != 200:
             raise ValueError(f'Unexpected HTTP status from {url}')
         payload = response.read(2_000_001)
@@ -30,16 +38,17 @@ def check_snapshot(payload, expect_demo, expected_mode=None):
 
 
 def check_services(market_url, news_url, dashboard_url, expect_demo,
-                   market_traffic_url=None, market_mode=None, news_mode=None):
-    if fetch(market_url + '/health').get('service') != 'market':
+                   market_traffic_url=None, market_mode=None, news_mode=None, *, open_url=None):
+    get = partial(fetch, open_url=open_url) if open_url is not None else fetch
+    if get(market_url + '/health').get('service') != 'market':
         raise ValueError('Market service boundary changed')
-    if fetch(news_url + '/health').get('service') != 'news':
+    if get(news_url + '/health').get('service') != 'news':
         raise ValueError('News service boundary changed')
     # Probe process/metrics directly, and user-facing API contracts through the
     # weighted production route. The ALB intentionally routes only /api/v1.
     traffic_url = (market_traffic_url or market_url).rstrip('/')
-    quotes = fetch(traffic_url + '/api/v1/quotes')
-    headlines = fetch(news_url + '/api/v1/news')
+    quotes = get(traffic_url + '/api/v1/quotes')
+    headlines = get(news_url + '/api/v1/news')
     check_snapshot(quotes, expect_demo, market_mode)
     check_snapshot(headlines, expect_demo, news_mode)
     if expect_demo and len(quotes['items']) != 6:
@@ -50,12 +59,12 @@ def check_services(market_url, news_url, dashboard_url, expect_demo,
             raise ValueError('Invalid quote contract')
     if not all(item.get('title') for item in headlines['items']):
         raise ValueError('Invalid news contract')
-    insights = fetch(traffic_url + '/api/v1/insights')
+    insights = get(traffic_url + '/api/v1/insights')
     if not all(key in insights for key in ('advances', 'declines', 'unchanged', 'leaders')):
         raise ValueError('Invalid insight contract')
-    if fetch(dashboard_url + '/_stcore/health', as_json=False) != 'ok':
+    if get(dashboard_url + '/_stcore/health', as_json=False) != 'ok':
         raise ValueError('Dashboard failed its health contract')
-    metrics = fetch(market_url + '/metrics', as_json=False)
+    metrics = get(market_url + '/metrics', as_json=False)
     if 'market_intel_http_requests_total' not in metrics:
         raise ValueError('API instrumentation is missing')
 
@@ -68,15 +77,23 @@ def main():
     parser.add_argument('--market-traffic-url', help='Weighted API origin; process and metrics checks remain direct')
     parser.add_argument('--market-mode')
     parser.add_argument('--news-mode')
+    parser.add_argument('--tls-ca-file', help='Trust this CA for HTTPS APIs and refuse redirects')
     parser.add_argument('--expect-demo', action='store_true')
     parser.add_argument('--attempts', type=int, default=6)
     args = parser.parse_args()
     if args.attempts < 1:
         parser.error('--attempts must be positive; every smoke run must check services')
+    tls = {}
+    if args.tls_ca_file:
+        urls = (args.market_url, args.news_url, args.market_traffic_url or args.market_url)
+        if any(urlsplit(url).scheme != 'https' for url in urls):
+            parser.error('--tls-ca-file requires HTTPS market, news and market traffic URLs')
+        context = ssl.create_default_context(cafile=args.tls_ca_file)
+        tls['open_url'] = build_opener(ProxyHandler({}), HTTPSHandler(context=context), _NoRedirect()).open
     for attempt in range(args.attempts):
         try:
             check_services(args.market_url, args.news_url, args.dashboard_url, args.expect_demo,
-                           args.market_traffic_url, args.market_mode, args.news_mode)
+                           args.market_traffic_url, args.market_mode, args.news_mode, **tls)
             print('Dashboard, market/news data contracts, freshness and metrics passed')
             return
         except (OSError, ValueError, KeyError) as error:

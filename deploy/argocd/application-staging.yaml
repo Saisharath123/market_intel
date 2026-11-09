@@ -13,6 +13,7 @@ spec:
       valueFiles:
         - values.yaml
         - values-staging.yaml
+        - values-staging-tls.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: market-intel-staging
