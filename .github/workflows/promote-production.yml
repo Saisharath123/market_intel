@@ -7,6 +7,10 @@ on:
         type: boolean
         required: true
         default: false
+      source_revision:
+        description: Optional full source commit for a staged image set with multiple release tags.
+        type: string
+        required: false
 permissions:
   contents: read
 concurrency:
@@ -39,6 +43,17 @@ jobs:
           allowed-account-ids: '521595303406'
           role-session-name: market-intel-promote-${{ github.run_id }}
           retry-max-attempts: 2
+          inline-session-policy: >-
+            {"Version":"2012-10-17","Statement":[
+            {"Effect":"Allow","Action":"ecr:GetAuthorizationToken","Resource":"*"},
+            {"Effect":"Allow","Action":["ecr:BatchGetImage","ecr:BatchCheckLayerAvailability","ecr:DescribeImages",
+            "ecr:DescribeImageScanFindings","ecr:GetDownloadUrlForLayer"],"Resource":[
+            "arn:aws:ecr:${{ env.AWS_REGION }}:521595303406:repository/market-intel/dashboard",
+            "arn:aws:ecr:${{ env.AWS_REGION }}:521595303406:repository/market-intel/market",
+            "arn:aws:ecr:${{ env.AWS_REGION }}:521595303406:repository/market-intel/news"]},
+            {"Effect":"Allow","Action":"signer:GetRevocationStatus","Resource":[
+            "arn:aws:signer:${{ env.AWS_REGION }}:521595303406:/signing-profiles/MarketIntelReleaseSigning",
+            "arn:aws:signer:${{ env.AWS_REGION }}:521595303406:/signing-jobs/*"]}]}
       - name: Revalidate the published staged digests without rebuilding
         shell: bash
         run: |
@@ -49,6 +64,23 @@ jobs:
             test "$existing" = "$digest"
             python infra/check-image-scan.py "$repository" "$digest"
           done < "$RUNNER_TEMP/staged-images.txt"
+      - uses: ./.github/actions/setup-aws-notation
+        id: notation
+      - name: Require valid unrevoked signatures and trusted build provenance
+        env:
+          NOTATION: ${{ steps.notation.outputs.notation }}
+          NOTATION_LIBEXEC_PATH: ${{ steps.notation.outputs.libexec }}
+          NOTATION_ROOT_CERT: ${{ steps.notation.outputs.root-cert }}
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_check=()
+          if [ -n "$EXPECTED_SOURCE_REVISION" ]; then source_check+=(--source-revision "$EXPECTED_SOURCE_REVISION"); fi
+          python infra/release_provenance.py verify --account 521595303406 --region "$AWS_REGION" \
+            --profile MarketIntelReleaseSigning --source deploy/chart/values-staging.yaml \
+            --notation "$NOTATION" --notation-libexec "$NOTATION_LIBEXEC_PATH" --root-cert "$NOTATION_ROOT_CERT" \
+            "${source_check[@]}"
       - name: Create the reviewed production promotion PR
         env:
           GH_TOKEN: ${{ github.token }}

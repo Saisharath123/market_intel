@@ -68,7 +68,7 @@ def require_success(result, operation):
         raise ValueError(f'{operation} failed. The signature gate is closed.')
 
 
-def verify_images(args, images, profile, temporary):
+def prepare_notation(args, images, profile, temporary):
     aws = [args.aws, '--region', args.region, '--no-cli-pager']
     identity = run([*aws, 'sts', 'get-caller-identity', '--query', 'Account', '--output', 'text'])
     require_success(identity, 'AWS identity check')
@@ -97,7 +97,11 @@ def verify_images(args, images, profile, temporary):
     if not token.stdout.strip():
         raise ValueError('ECR returned an empty registry token')
     env.update({'NOTATION_USERNAME': 'AWS', 'NOTATION_PASSWORD': token.stdout.strip()})
+    return env
 
+
+def verify_images(args, images, profile, temporary):
+    env = prepare_notation(args, images, profile, temporary)
     for image in images:
         verify = [args.notation, 'verify', image]
         result = run(verify, env)
