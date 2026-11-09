@@ -1,4 +1,5 @@
 {{- if .Values.monitoring.enabled }}
+{{- $tls := (default (dict) .Values.internalTls).enabled }}
 {{- range $name := list "market-api" "news-api" }}
 ---
 apiVersion: monitoring.coreos.com/v1
@@ -19,6 +20,15 @@ spec:
       path: /metrics
       interval: 30s
       honorLabels: true
+      {{- if $tls }}
+      scheme: https
+      tlsConfig:
+        ca:
+          configMap:
+            name: market-intel-ca
+            key: ca.crt
+        serverName: {{ include "market-intel.apiDns" (dict "name" $name "root" $) | quote }}
+      {{- end }}
 {{- end }}
 ---
 apiVersion: monitoring.coreos.com/v1

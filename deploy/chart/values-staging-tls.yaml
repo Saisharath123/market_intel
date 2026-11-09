@@ -1,0 +1,4 @@
+# Layer on values-staging.yaml only after the staging TLS Secrets and public
+# CA ConfigMap have been created. This overlay does not alter production.
+internalTls:
+  enabled: true

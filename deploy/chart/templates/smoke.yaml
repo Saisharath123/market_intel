@@ -1,4 +1,5 @@
 {{- if .Values.smokeTest.enabled }}
+{{- $tls := (default (dict) .Values.internalTls).enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -45,6 +46,14 @@ spec:
             - {{ (index .Values.services "market-api").env.MARKET_MODE | quote }}
             - --news-mode
             - {{ (index .Values.services "news-api").env.NEWS_MODE | quote }}
+            {{- if $tls }}
+            - --market-url
+            - {{ include "market-intel.internalApiUrl" (dict "name" "market-api" "root" .) | quote }}
+            - --news-url
+            - {{ include "market-intel.internalApiUrl" (dict "name" "news-api" "root" .) | quote }}
+            - --tls-ca-file
+            - /var/run/market-intel/ca/ca.crt
+            {{- end }}
             {{- if eq .Values.environment "staging" }}
             - --expect-demo
             {{- end }}
@@ -60,8 +69,21 @@ spec:
             - name: checks
               mountPath: /checks
               readOnly: true
+            {{- if $tls }}
+            - name: internal-ca
+              mountPath: /var/run/market-intel/ca
+              readOnly: true
+            {{- end }}
       volumes:
         - name: checks
           configMap:
             name: market-intel-smoke
+        {{- if $tls }}
+        - name: internal-ca
+          configMap:
+            name: market-intel-ca
+            items:
+              - key: ca.crt
+                path: ca.crt
+        {{- end }}
 {{- end }}
