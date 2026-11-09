@@ -1,0 +1,37 @@
+# Render only with image_signature_gate.py after strict Notation verification.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: market-intel-unrendered-verified-images
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ['']
+        apiVersions: ['v1']
+        operations: [CREATE, UPDATE]
+        resources: [pods, pods/ephemeralcontainers]
+        scope: Namespaced
+  variables:
+    - name: approvedImages
+      expression: '[]'
+  validations:
+    - expression: >-
+        object.spec.containers.all(container, container.image in variables.approvedImages)
+        && (!has(object.spec.initContainers)
+            || object.spec.initContainers.all(container, container.image in variables.approvedImages))
+        && (!has(object.spec.ephemeralContainers)
+            || object.spec.ephemeralContainers.all(container, container.image in variables.approvedImages))
+      message: All container images must use a verified Market Intel release digest.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: market-intel-unrendered-verified-images
+spec:
+  policyName: market-intel-unrendered-verified-images
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: market-intel-unrendered-policy

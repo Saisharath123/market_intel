@@ -214,6 +214,52 @@
         }
       }
     },
+    "AlbIsolatedRoutes": {
+      "Type": "AWS::EC2::RouteTable",
+      "Condition": "UseDedicatedAlbSubnets",
+      "Properties": {
+        "VpcId": {"Ref": "Vpc"},
+        "Tags": [{"Key": "Name", "Value": "market-intel-sre-alb-local"}]
+      }
+    },
+    "AlbSubnet0": {
+      "Type": "AWS::EC2::Subnet",
+      "Condition": "UseDedicatedAlbSubnets",
+      "Properties": {
+        "VpcId": {"Ref": "Vpc"},
+        "AvailabilityZone": "ap-south-1a",
+        "CidrBlock": "10.80.20.0/27",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [{"Key": "Name", "Value": "market-intel-sre-alb-a"}]
+      }
+    },
+    "AlbSubnet1": {
+      "Type": "AWS::EC2::Subnet",
+      "Condition": "UseDedicatedAlbSubnets",
+      "Properties": {
+        "VpcId": {"Ref": "Vpc"},
+        "AvailabilityZone": "ap-south-1b",
+        "CidrBlock": "10.80.21.0/27",
+        "MapPublicIpOnLaunch": false,
+        "Tags": [{"Key": "Name", "Value": "market-intel-sre-alb-b"}]
+      }
+    },
+    "AlbSubnetAssoc0": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Condition": "UseDedicatedAlbSubnets",
+      "Properties": {
+        "SubnetId": {"Ref": "AlbSubnet0"},
+        "RouteTableId": {"Ref": "AlbIsolatedRoutes"}
+      }
+    },
+    "AlbSubnetAssoc1": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Condition": "UseDedicatedAlbSubnets",
+      "Properties": {
+        "SubnetId": {"Ref": "AlbSubnet1"},
+        "RouteTableId": {"Ref": "AlbIsolatedRoutes"}
+      }
+    },
     "ClusterRole": {
       "Type": "AWS::IAM::Role",
       "Properties": {
@@ -531,6 +577,10 @@
   },
   "Outputs": {
     "PrivateApiZoneId": {"Value": {"Ref": "PrivateApiZone"}},
+    "DedicatedAlbSubnetIds": {
+      "Condition": "UseDedicatedAlbSubnets",
+      "Value": {"Fn::Join": [",", [{"Ref": "AlbSubnet0"}, {"Ref": "AlbSubnet1"}]]}
+    },
     "ClusterName": {
       "Value": {
         "Ref": "Cluster"
@@ -602,9 +652,18 @@
         "false"
       ],
       "Description": "Temporary node CNI permission during bootstrap; set false only after the managed VPC CNI uses its active Pod Identity role."
+    },
+    "EnableDedicatedAlbSubnets": {
+      "Type": "String",
+      "Default": "false",
+      "AllowedValues": ["true", "false"],
+      "Description": "Create two isolated subnets exclusively for the internal market API load balancer."
     }
   },
   "Conditions": {
+    "UseDedicatedAlbSubnets": {
+      "Fn::Equals": [{"Ref": "EnableDedicatedAlbSubnets"}, "true"]
+    },
     "AttachNodeCniPolicy": {
       "Fn::Equals": [
         {

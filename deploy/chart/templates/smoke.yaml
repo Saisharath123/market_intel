@@ -1,5 +1,7 @@
 {{- if .Values.smokeTest.enabled }}
-{{- $tls := (default (dict) .Values.internalTls).enabled }}
+{{- $phase := include "market-intel.productionTlsPhase" . }}
+{{- $warm := eq $phase "prepare" }}
+{{- $tls := or (default (dict) .Values.internalTls).enabled (eq $phase "switch") (eq $phase "retire") }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -51,6 +53,16 @@ spec:
             - {{ include "market-intel.internalApiUrl" (dict "name" "market-api" "root" .) | quote }}
             - --news-url
             - {{ include "market-intel.internalApiUrl" (dict "name" "news-api" "root" .) | quote }}
+            {{- end }}
+            {{- if $warm }}
+            - --warm-tls-endpoint
+            - {{ include "market-intel.internalApiUrl" (dict "name" "market-api" "root" .) | quote }}
+            - market
+            - --warm-tls-endpoint
+            - {{ include "market-intel.internalApiUrl" (dict "name" "news-api" "root" .) | quote }}
+            - news
+            {{- end }}
+            {{- if or $tls $warm }}
             - --tls-ca-file
             - /var/run/market-intel/ca/ca.crt
             {{- end }}
@@ -69,7 +81,7 @@ spec:
             - name: checks
               mountPath: /checks
               readOnly: true
-            {{- if $tls }}
+            {{- if or $tls $warm }}
             - name: internal-ca
               mountPath: /var/run/market-intel/ca
               readOnly: true
@@ -78,7 +90,7 @@ spec:
         - name: checks
           configMap:
             name: market-intel-smoke
-        {{- if $tls }}
+        {{- if or $tls $warm }}
         - name: internal-ca
           configMap:
             name: market-intel-ca

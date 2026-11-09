@@ -78,22 +78,32 @@ def main():
     parser.add_argument('--market-mode')
     parser.add_argument('--news-mode')
     parser.add_argument('--tls-ca-file', help='Trust this CA for HTTPS APIs and refuse redirects')
+    parser.add_argument('--warm-tls-endpoint', nargs=2, action='append', default=[], metavar=('URL', 'SERVICE'),
+                        help='Verify a parallel HTTPS health endpoint while HTTP remains the normal path')
     parser.add_argument('--expect-demo', action='store_true')
     parser.add_argument('--attempts', type=int, default=6)
     args = parser.parse_args()
     if args.attempts < 1:
         parser.error('--attempts must be positive; every smoke run must check services')
-    tls = {}
+    tls, open_verified = {}, None
+    if args.warm_tls_endpoint and not args.tls_ca_file:
+        parser.error('--warm-tls-endpoint requires --tls-ca-file')
     if args.tls_ca_file:
-        urls = (args.market_url, args.news_url, args.market_traffic_url or args.market_url)
+        urls = ([url for url, _ in args.warm_tls_endpoint] if args.warm_tls_endpoint else
+                [args.market_url, args.news_url, args.market_traffic_url or args.market_url])
         if any(urlsplit(url).scheme != 'https' for url in urls):
-            parser.error('--tls-ca-file requires HTTPS market, news and market traffic URLs')
+            parser.error('TLS verification requires HTTPS endpoints')
         context = ssl.create_default_context(cafile=args.tls_ca_file)
-        tls['open_url'] = build_opener(ProxyHandler({}), HTTPSHandler(context=context), _NoRedirect()).open
+        open_verified = build_opener(ProxyHandler({}), HTTPSHandler(context=context), _NoRedirect()).open
+        if not args.warm_tls_endpoint:
+            tls['open_url'] = open_verified
     for attempt in range(args.attempts):
         try:
             check_services(args.market_url, args.news_url, args.dashboard_url, args.expect_demo,
                            args.market_traffic_url, args.market_mode, args.news_mode, **tls)
+            for url, service in args.warm_tls_endpoint:
+                if fetch(url.rstrip('/') + '/health', open_url=open_verified).get('service') != service:
+                    raise ValueError('Parallel TLS health contract changed')
             print('Dashboard, market/news data contracts, freshness and metrics passed')
             return
         except (OSError, ValueError, KeyError) as error:

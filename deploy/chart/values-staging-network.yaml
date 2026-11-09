@@ -1,0 +1,5 @@
+# Layer after values-staging.yaml. Also compatible with values-staging-tls.yaml.
+# Staging providers serve fixed demo data, so they only need CoreDNS egress.
+networkHardening:
+  enabled: true
+  allowInternetHttps: false

@@ -36,7 +36,9 @@ spec:
               app.kubernetes.io/name: prometheus
         {{- end }}
       ports:
+        {{- range (include "market-intel.internalApiPorts" (dict "name" $name "root" $) | fromJsonArray) }}
         - protocol: TCP
-          port: {{ (index $.Values.services $name).port }}
+          port: {{ . }}
+        {{- end }}
 {{- end }}
 {{- end }}

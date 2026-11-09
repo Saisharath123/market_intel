@@ -1,0 +1,5 @@
+# Optional migration overlay. Activate prepare first. Advance with reviewed
+# overrides only after confirming the previous phase and rollback plan.
+internalTls:
+  productionPhase: prepare
+  albCertificateArn: ""

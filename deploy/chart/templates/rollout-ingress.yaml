@@ -1,4 +1,11 @@
 {{- if .Values.rollouts.enabled }}
+{{- $phase := include "market-intel.productionTlsPhase" . }}
+{{- $https := or (eq $phase "switch") (eq $phase "retire") }}
+{{- $hardening := .Values.networkHardening | default dict }}
+{{- $albSubnetNames := $hardening.albSubnetNames | default list }}
+{{- if and $albSubnetNames (or (ne (len $albSubnetNames) 2) (ne (len (uniq $albSubnetNames)) 2)) }}
+{{- fail "the internal ALB requires two distinct dedicated subnet names" }}
+{{- end }}
 # Argo Rollouts owns only the actions.market-api-root annotation.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -7,7 +14,22 @@ metadata:
   annotations:
     alb.ingress.kubernetes.io/scheme: internal
     alb.ingress.kubernetes.io/target-type: ip
+    {{- with $albSubnetNames }}
+    alb.ingress.kubernetes.io/subnets: {{ join "," . | quote }}
+    {{- end }}
+    {{- if $https }}
+    {{- $arn := required "set internalTls.albCertificateArn to the reviewed imported certificate before switching" .Values.internalTls.albCertificateArn }}
+    {{- if not (regexMatch "^arn:aws:acm:ap-south-1:[0-9]{12}:certificate/[0-9a-fA-F-]{36}$" $arn) }}
+    {{- fail "internalTls.albCertificateArn must be a regional ACM certificate ARN" }}
+    {{- end }}
+    alb.ingress.kubernetes.io/listen-ports: {{ ternary "[{\"HTTPS\":443}]" "[{\"HTTP\":80},{\"HTTPS\":443}]" (eq $phase "retire") | quote }}
+    alb.ingress.kubernetes.io/certificate-arn: {{ $arn | quote }}
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/backend-protocol: HTTPS
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTPS
+    {{- else }}
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    {{- end }}
     alb.ingress.kubernetes.io/healthcheck-path: /health
     alb.ingress.kubernetes.io/success-codes: '200'
     alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=60
