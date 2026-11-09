@@ -27,8 +27,10 @@ runs:
         vendor="$destination/vendor/tmp/com.amazonaws.signer.notation.installer.deb"
         plugin=com.amazonaws.signer.notation.plugin
         install -Dm755 "$vendor/notation_libexec/notation-$plugin" "$destination/libexec/plugins/$plugin/notation-$plugin"
-        notation="$vendor/notation_bin/notation"
+        notation="$destination/bin/notation"
+        install -Dm755 "$vendor/notation_bin/notation" "$notation"
         root_cert="$vendor/notation_config/aws-signer-notation-root.crt"
-        test -x "$notation" && test -f "$root_cert"
+        test -x "$notation"
+        test -f "$root_cert"
         NOTATION_LIBEXEC="$destination/libexec" "$notation" plugin ls | grep -F "$plugin"
         printf 'notation=%s\nlibexec=%s\nroot-cert=%s\n' "$notation" "$destination/libexec" "$root_cert" >> "$GITHUB_OUTPUT"
