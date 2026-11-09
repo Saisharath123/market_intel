@@ -186,6 +186,17 @@ def test_cf_cni_parameter_preserves_managed_ownership():
     assert template['Resources']['NodeRole']['Properties']['ManagedPolicyArns'][-1]['Fn::If'][0] == 'AttachNodeCniPolicy'
 
 
+def test_control_plane_logging_has_explicit_retention_and_stack_ownership():
+    resources = json.loads((provision.ROOT / 'infra/cloudformation/eks.json').read_text())['Resources']
+    cluster = resources['Cluster']
+    logs = resources['ControlPlaneLogs']
+    assert cluster['DependsOn'] == 'ControlPlaneLogs'
+    assert logs['Type'] == 'AWS::Logs::LogGroup'
+    assert logs['Properties']['LogGroupName'] == f"/aws/eks/{cluster['Properties']['Name']}/cluster"
+    assert logs['Properties']['RetentionInDays'] == 180
+    assert logs.get('DeletionPolicy', 'Delete') == 'Delete'
+
+
 def test_rollouts_values_are_installed_after_monitoring_crds(tmp_path, monkeypatch):
     op = operator(tmp_path)
     operations = []

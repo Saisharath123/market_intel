@@ -1,3 +1,6 @@
+import logging
+
+import pytest
 import requests
 from fastapi.testclient import TestClient
 
@@ -58,3 +61,33 @@ def test_metrics_do_not_label_arbitrary_paths_or_queries():
     assert 'route="unmatched",service="market",status="404"' in metrics.text
     assert 'unknown-sensitive-value' not in metrics.text
     assert 'private-value' not in metrics.text
+
+
+@pytest.mark.parametrize('service_app', [market_app, app])
+def test_internal_api_has_security_headers_and_no_schema_ui(service_app):
+    api = TestClient(service_app)
+    for path in ('/docs', '/redoc', '/openapi.json'):
+        assert api.get(path).status_code == 404
+
+    response = api.get('/health')
+    assert response.status_code == 200
+    assert response.headers['X-Content-Type-Options'] == 'nosniff'
+    assert response.headers['X-Frame-Options'] == 'DENY'
+    assert response.headers['Referrer-Policy'] == 'no-referrer'
+
+
+def test_api_access_log_uses_route_template_without_request_data(caplog):
+    logger = logging.getLogger('uvicorn.error')
+    api = TestClient(market_app)
+    logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.INFO, logger=logger.name):
+            api.get('/unknown-sensitive-value?token=private-value')
+    finally:
+        logger.removeHandler(caplog.handler)
+
+    event, = [record.getMessage() for record in caplog.records if record.name == 'uvicorn.error']
+    assert 'api_request utc=' in event
+    assert 'service=market route=unmatched status=404' in event
+    assert 'unknown-sensitive-value' not in event
+    assert 'private-value' not in event

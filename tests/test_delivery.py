@@ -90,6 +90,29 @@ def documents(result):
     return [doc for doc in yaml.safe_load_all(result.stdout) if doc]
 
 
+@pytest.mark.parametrize('environment,protected_apis', [
+    ('staging', {'market-api', 'news-api'}),
+    ('production', {'news-api'}),
+])
+def test_network_policy_limits_api_ingress_to_approved_callers(environment, protected_apis):
+    docs = documents(render(environment))
+    policies = [doc['spec'] for doc in docs if doc['kind'] == 'NetworkPolicy']
+    assert {policy['podSelector']['matchLabels']['app'] for policy in policies} == protected_apis
+    for policy in policies:
+        assert policy['policyTypes'] == ['Ingress']
+        assert policy['ingress'] == [{
+            'from': [
+                {'podSelector': {'matchLabels': {'app': 'dashboard'}}},
+                {'podSelector': {'matchLabels': {'app': 'market-intel-smoke'}}},
+                {
+                    'namespaceSelector': {'matchLabels': {'kubernetes.io/metadata.name': 'monitoring'}},
+                    'podSelector': {'matchLabels': {'app.kubernetes.io/name': 'prometheus'}},
+                },
+            ],
+            'ports': [{'protocol': 'TCP', 'port': 8000}],
+        }]
+
+
 @pytest.mark.parametrize('environment,expected_url,market_mode', [
     ('staging', 'http://market-api:8000', 'demo'),
     ('production', 'http://api.market-intel.internal', 'yahoo'),

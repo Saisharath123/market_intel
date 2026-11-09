@@ -1,0 +1,42 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $services := list "news-api" }}
+{{- if not .Values.rollouts.enabled }}
+{{- $services = append $services "market-api" }}
+{{- end }}
+{{- /* Rollouts' market API receives ALB and health-check traffic from VPC IPs.
+      Leave it outside these pod-identity policies until it has an explicit ALB boundary.
+      The dashboard also has an optional load balancer and is not selected here. */ -}}
+{{- range $name := $services }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ $name }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: dashboard
+        {{- if $.Values.smokeTest.enabled }}
+        - podSelector:
+            matchLabels:
+              app: market-intel-smoke
+        {{- end }}
+        {{- if $.Values.monitoring.enabled }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ (index $.Values.services $name).port }}
+{{- end }}
+{{- end }}

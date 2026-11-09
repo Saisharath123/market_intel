@@ -7,6 +7,8 @@ services:
     image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/news@sha256:03714b3bc1b3ac11303dd9b838fbfa495d042ec59ce7b5bcddf1ba52d76709ea" # Filled only by an approved production promotion PR.
 monitoring:
   enabled: true
+networkPolicy:
+  enabled: true
 
 environment: production
 requireImageDigest: true
