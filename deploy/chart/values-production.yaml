@@ -1,10 +1,10 @@
 services:
   dashboard:
-    image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/dashboard@sha256:b283ecc2f498f0c42989b2c7744dc5285b950f271b897733de8cc00720873d98" # Filled only by an approved production promotion PR.
+    image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/dashboard@sha256:1910f87d44ad9e4ea78edb6b728410cee542529112f0271481d7d20a4964df1f" # Filled only by an approved production promotion PR.
   market-api:
-    image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/market@sha256:93fa837672b68f24f97a792d7d911c7e79bf7a09b5f703bb41a6e51461f1f3f6" # Filled only by an approved production promotion PR.
+    image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/market@sha256:11d5ebc8d7af6bc4f350d788bc1be9a071b07bbfbecb5e573091f5af6c0827d9" # Filled only by an approved production promotion PR.
   news-api:
-    image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/news@sha256:03714b3bc1b3ac11303dd9b838fbfa495d042ec59ce7b5bcddf1ba52d76709ea" # Filled only by an approved production promotion PR.
+    image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/news@sha256:d497079b1740bfe27787c06564496f1854349cee9995950e4e5ecf0528269cf6" # Filled only by an approved production promotion PR.
 monitoring:
   enabled: true
 networkPolicy:
