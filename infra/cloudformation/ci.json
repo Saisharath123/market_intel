@@ -183,6 +183,19 @@
                       ]
                     }
                   ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "signer:SignPayload",
+                  "Resource": {"Fn::Sub": "arn:\u0024{AWS::Partition}:signer:\u0024{AWS::Region}:\u0024{AWS::AccountId}:/signing-profiles/MarketIntelReleaseSigning"}
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "signer:GetRevocationStatus",
+                  "Resource": [
+                    {"Fn::Sub": "arn:\u0024{AWS::Partition}:signer:\u0024{AWS::Region}:\u0024{AWS::AccountId}:/signing-profiles/MarketIntelReleaseSigning"},
+                    {"Fn::Sub": "arn:\u0024{AWS::Partition}:signer:\u0024{AWS::Region}:\u0024{AWS::AccountId}:/signing-jobs/*"}
+                  ]
                 }
               ]
             }

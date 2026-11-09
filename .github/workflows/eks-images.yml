@@ -91,6 +91,8 @@ jobs:
           skip-dashboard: ${{ steps.existing.outputs.dashboard }}
           skip-market: ${{ steps.existing.outputs.market }}
           skip-news: ${{ steps.existing.outputs.news }}
+      - uses: ./.github/actions/setup-aws-notation
+        id: notation
       - name: Publish those same artifacts and require completed ECR scans
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
@@ -117,6 +119,31 @@ jobs:
             printf '  %s:\n    image: "%s@%s"\n' "$name" "$image" "$digest" >> work/release-values.yaml
           done
           python .github/scripts/gitops_release.py manifest --source work/release-values.yaml --region "$AWS_REGION"
+      - name: Record private build provenance and verify signature revocation status
+        env:
+          NOTATION: ${{ steps.notation.outputs.notation }}
+          NOTATION_LIBEXEC_PATH: ${{ steps.notation.outputs.libexec }}
+          NOTATION_ROOT_CERT: ${{ steps.notation.outputs.root-cert }}
+          EXISTING_DASHBOARD: ${{ steps.existing.outputs.dashboard }}
+          EXISTING_MARKET_API: ${{ steps.existing.outputs.market }}
+          EXISTING_NEWS_API: ${{ steps.existing.outputs.news }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          newly_built=()
+          for service in dashboard market-api news-api; do
+            key="EXISTING_${service^^}"
+            key="${key//-/_}"
+            case "${!key}" in
+              false) newly_built+=(--sign-new-service "$service") ;;
+              true) ;;
+              *) exit 1 ;;
+            esac
+          done
+          python infra/release_provenance.py record --account 521595303406 --region "$AWS_REGION" \
+            --profile MarketIntelReleaseSigning --source work/release-values.yaml --notation "$NOTATION" \
+            --notation-libexec "$NOTATION_LIBEXEC_PATH" --root-cert "$NOTATION_ROOT_CERT" "${newly_built[@]}"
       - name: Propose staging GitOps release
         env:
           GH_TOKEN: ${{ github.token }}
