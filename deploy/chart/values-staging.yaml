@@ -4,15 +4,15 @@ requireImageDigest: true
 services:
   dashboard:
     replicas: 1
-    image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/dashboard@sha256:1910f87d44ad9e4ea78edb6b728410cee542529112f0271481d7d20a4964df1f"
+    image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/dashboard@sha256:db8c339e4c7c72c858bb8ea60e203d66281f8cfbb5321c88831ed258ba472567"
   market-api:
     replicas: 1
-    image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/market@sha256:11d5ebc8d7af6bc4f350d788bc1be9a071b07bbfbecb5e573091f5af6c0827d9"
+    image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/market@sha256:91746f4f23cc04a55c42619afd973144363357265d33ff244e9b93a379450dec"
     env:
       MARKET_MODE: demo
   news-api:
     replicas: 1
-    image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/news@sha256:d497079b1740bfe27787c06564496f1854349cee9995950e4e5ecf0528269cf6"
+    image: "521595303406.dkr.ecr.ap-south-1.amazonaws.com/market-intel/news@sha256:56d354ea7c714b5e725f229a9842446118d355fce493ea623870b2fa13766512"
     env:
       NEWS_MODE: demo
 monitoring:
