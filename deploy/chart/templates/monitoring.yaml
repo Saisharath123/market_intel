@@ -1,5 +1,7 @@
 {{- if .Values.monitoring.enabled }}
-{{- $tls := (default (dict) .Values.internalTls).enabled }}
+{{- $phase := include "market-intel.productionTlsPhase" . }}
+{{- $productionHttps := or (eq $phase "switch") (eq $phase "retire") }}
+{{- $tls := or (default (dict) .Values.internalTls).enabled $productionHttps }}
 {{- range $name := list "market-api" "news-api" }}
 ---
 apiVersion: monitoring.coreos.com/v1
@@ -16,7 +18,7 @@ spec:
   podTargetLabels:
     - rollouts-pod-template-hash
   endpoints:
-    - port: http
+    - port: {{ ternary "https" "http" $productionHttps }}
       path: /metrics
       interval: 30s
       honorLabels: true

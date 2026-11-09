@@ -3,6 +3,7 @@
 {{- fail "rollouts.enabled requires monitoring.enabled: true" }}
 {{- end }}
 {{- $service := index .Values.services "market-api" }}
+{{- $phase := include "market-intel.productionTlsPhase" . }}
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
@@ -44,7 +45,7 @@ spec:
         alb:
           ingress: market-api-canary
           rootService: market-api-root
-          servicePort: {{ $service.port }}
+          servicePort: {{ ternary 8443 $service.port (or (eq $phase "switch") (eq $phase "retire")) }}
       steps:
         - setWeight: 10
         - pause:
@@ -87,9 +88,7 @@ spec:
   selector:
     app: market-api
   ports:
-    - name: http
-      port: {{ $service.port }}
-      targetPort: http
+    {{- include "market-intel.servicePorts" (dict "name" "market-api" "root" .) | nindent 4 }}
 ---
 # Scrape each revision pod once, rather than stable/canary Services separately.
 apiVersion: v1
@@ -103,7 +102,5 @@ spec:
   selector:
     app: market-api
   ports:
-    - name: http
-      port: {{ $service.port }}
-      targetPort: http
+    {{- include "market-intel.servicePorts" (dict "name" "market-api" "root" .) | nindent 4 }}
 {{- end }}

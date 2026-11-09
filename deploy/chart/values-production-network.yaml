@@ -1,0 +1,13 @@
+# Layer after values-production.yaml only after CloudFormation has created
+# EnableDedicatedAlbSubnets=true. First sync this overlay as written to move
+# the internal ALB. Verify both target groups and the private DNS/route, then
+# enable the network policies in a separate reviewed sync.
+networkHardening:
+  enabled: false
+  allowInternetHttps: true
+  albSubnetNames:
+    - market-intel-sre-alb-a
+    - market-intel-sre-alb-b
+  albSubnetCidrs:
+    - 10.80.20.0/27
+    - 10.80.21.0/27

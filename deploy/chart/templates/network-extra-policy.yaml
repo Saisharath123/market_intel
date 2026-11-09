@@ -1,0 +1,196 @@
+{{- define "market-intel.networkHardening.dns" -}}
+- to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+  ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+{{- end -}}
+
+{{- define "market-intel.networkHardening.service" -}}
+- to:
+    - podSelector:
+        matchLabels:
+          app: {{ .app }}
+  ports:
+    {{- range .ports }}
+    - protocol: TCP
+      port: {{ . }}
+    {{- end }}
+{{- end -}}
+
+{{- define "market-intel.networkHardening.alb" -}}
+- to:
+    {{- range .cidrs }}
+    - ipBlock:
+        cidr: {{ . | quote }}
+    {{- end }}
+  ports:
+    {{- range .ports }}
+    - protocol: TCP
+      port: {{ . }}
+    {{- end }}
+{{- end -}}
+
+{{- $hardening := .Values.networkHardening | default dict }}
+{{- if $hardening.enabled }}
+{{- if not .Values.networkPolicy.enabled }}
+{{- fail "networkHardening.enabled requires the existing API ingress policies (networkPolicy.enabled)" }}
+{{- end }}
+{{- if .Values.ingress.enabled }}
+{{- fail "networkHardening.enabled is for the private dashboard; public dashboard ingress needs a separate boundary" }}
+{{- end }}
+{{- $alb := .Values.rollouts.enabled }}
+{{- $albCidrs := $hardening.albSubnetCidrs | default list }}
+{{- if $alb }}
+{{- $albNames := $hardening.albSubnetNames | default list }}
+{{- if or (not .Values.rollouts.routeDashboardThroughAlb) (ne (len $albNames) 2) (ne (len (uniq $albNames)) 2) (ne (len $albCidrs) 2) (ne (len (uniq $albCidrs)) 2) }}
+{{- fail "production network hardening requires the weighted ALB route and two dedicated ALB subnet names and CIDRs" }}
+{{- end }}
+{{- end }}
+{{- $marketPorts := include "market-intel.internalApiPorts" (dict "name" "market-api" "root" .) | fromJsonArray }}
+{{- $newsPorts := include "market-intel.internalApiPorts" (dict "name" "news-api" "root" .) | fromJsonArray }}
+{{- $albPorts := include "market-intel.internalAlbPorts" . | fromJsonArray }}
+{{- $albBoundary := dict "cidrs" $albCidrs "ports" $albPorts }}
+{{- $dashboardPort := .Values.services.dashboard.port }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dashboard-boundary
+spec:
+  podSelector:
+    matchLabels:
+      app: dashboard
+  policyTypes: [Ingress, Egress]
+  {{- if .Values.smokeTest.enabled }}
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: market-intel-smoke
+      ports:
+        - protocol: TCP
+          port: {{ $dashboardPort }}
+  {{- else }}
+  ingress: []
+  {{- end }}
+  egress:
+    {{- include "market-intel.networkHardening.dns" . | nindent 4 }}
+    {{- include "market-intel.networkHardening.service" (dict "app" "news-api" "ports" $newsPorts) | nindent 4 }}
+    {{- if $alb }}
+    {{- include "market-intel.networkHardening.alb" $albBoundary | nindent 4 }}
+    {{- else }}
+    {{- include "market-intel.networkHardening.service" (dict "app" "market-api" "ports" $marketPorts) | nindent 4 }}
+    {{- end }}
+{{- range $name := list "market-api" "news-api" }}
+{{- $marketRollout := and $alb (eq $name "market-api") }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-boundary
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ $name }}
+  {{- if $marketRollout }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        {{- range $albCidrs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+        {{- if $.Values.smokeTest.enabled }}
+        # The smoke job probes stable market health and metrics directly.
+        - podSelector:
+            matchLabels:
+              app: market-intel-smoke
+        {{- end }}
+        {{- if $.Values.monitoring.enabled }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+        {{- end }}
+      ports:
+        {{- range $marketPorts }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+  {{- else }}
+  policyTypes: [Egress]
+  {{- end }}
+  egress:
+    {{- include "market-intel.networkHardening.dns" $ | nindent 4 }}
+    {{- if $hardening.allowInternetHttps }}
+    # Provider addresses rotate. Limit ports and destination address ranges,
+    # while HTTPS hostname verification stays in the application clients.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 0.0.0.0/8
+              - 10.0.0.0/8
+              - 100.64.0.0/10
+              - 127.0.0.0/8
+              - 169.254.0.0/16
+              - 172.16.0.0/12
+              - 192.0.0.0/24
+              - 192.0.2.0/24
+              - 192.168.0.0/16
+              - 198.18.0.0/15
+              - 198.51.100.0/24
+              - 203.0.113.0/24
+              - 224.0.0.0/4
+              - 240.0.0.0/4
+      ports:
+        - protocol: TCP
+          port: 443
+    {{- end }}
+{{- end }}
+{{- if .Values.smokeTest.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: smoke-boundary
+spec:
+  podSelector:
+    matchLabels:
+      app: market-intel-smoke
+  policyTypes: [Egress]
+  egress:
+    {{- include "market-intel.networkHardening.dns" . | nindent 4 }}
+    {{- include "market-intel.networkHardening.service" (dict "app" "dashboard" "ports" (list $dashboardPort)) | nindent 4 }}
+    {{- include "market-intel.networkHardening.service" (dict "app" "market-api" "ports" $marketPorts) | nindent 4 }}
+    {{- include "market-intel.networkHardening.service" (dict "app" "news-api" "ports" $newsPorts) | nindent 4 }}
+    {{- if $alb }}
+    {{- include "market-intel.networkHardening.alb" $albBoundary | nindent 4 }}
+    {{- end }}
+{{- end }}
+{{- if and $alb (include "market-intel.productionTlsPhase" .) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: canary-traffic-boundary
+spec:
+  podSelector:
+    matchLabels:
+      app: canary-traffic
+  policyTypes: [Egress]
+  egress:
+    {{- include "market-intel.networkHardening.dns" . | nindent 4 }}
+    {{- include "market-intel.networkHardening.alb" $albBoundary | nindent 4 }}
+{{- end }}
+{{- end }}
